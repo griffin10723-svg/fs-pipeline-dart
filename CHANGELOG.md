@@ -10,3 +10,4 @@ Stage 게이트를 통과할 때마다 한 묶음으로 정리한다. 커밋 하
 - README 첫 판: 문제 정의·성공 기준
 - 판단 기록: 연결재무제표 기준(D-001), ROE 범위 일치 원칙(D-002)
 - 레포 문서 5종: ROADMAP · ARCHITECTURE · CHANGELOG · DECISIONS
+- 착수 전 원문 대조 기록(3개사 2024, 9개 값)을 `docs/validation.md`로 이관. Stage 1 착수 (2026-10-03)
