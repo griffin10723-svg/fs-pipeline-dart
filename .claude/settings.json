@@ -1,0 +1,8 @@
+{
+  "env": {
+    "PONYTAIL_DEFAULT_MODE": "lite"
+  },
+  "enabledPlugins": {
+    "forge-quant@skills-dir": true
+  }
+}
