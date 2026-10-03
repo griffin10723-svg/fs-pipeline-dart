@@ -38,3 +38,10 @@ Thumbs.db
 # 테스트 입력·기준 결과는 커밋한다(위의 *.csv·*.parquet 규칙의 예외). 재현성과 골든 비교에 필요하다.
 !tests/fixtures/**
 !tests/golden/**
+
+# 도구가 만드는 산출물 — 다시 만들 수 있다
+.claude-flow/
+graphify-out/
+.planning/graphs/
+.claude/proven-config.json
+.claude/.proven-config-version
