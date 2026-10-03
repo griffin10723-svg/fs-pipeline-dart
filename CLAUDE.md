@@ -17,7 +17,7 @@
 
 | | 내용 |
 |---|---|
-| **Must** | KOSPI200 × 최근 5개년 연결 재무제표(XBRL 전체 계정) 수집 · 계정과목 표준화 사전 · 재무비율 30종 산출 · 표본 대조 검증 노트북 · **다른 레포가 import할 로더 함수** · **`core/analyze.py`의 `analyze(subject, context=None, **params)` 진입 함수 + `SAMPLE`** |
+| **Must** | KOSPI200 × 2015~2025(11개년, D-012) 연결 재무제표(XBRL 전체 계정) 수집 · 계정과목 표준화 사전 · 재무비율 30종 산출 · 표본 대조 검증 노트북 · **다른 레포가 import할 로더 함수** · **`core/analyze.py`의 `analyze(subject, context=None, **params)` 진입 함수 + `SAMPLE`** |
 | **Should** | 정정공시(재작성) 반영 · 결산월 변경 기업 처리 · parquet 캐싱 · **주석 표(특수관계자·충당부채·리스) 파싱 1건 시험** — N2·N9·M1이 재사용 (본격 구현은 Won't) |
 | **Won't** | 코스닥 · 분기 데이터 · 별도재무제표 · 실시간 갱신 · 웹 UI · 금융업 2022 이전 연도(XBRL 없음, D-009) |
 
