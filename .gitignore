@@ -21,10 +21,19 @@ data/
 *.csv
 
 # 결과물 — 용량 보고 판단. README 에 넣을 그림은 아래 negate 규칙으로 예외 처리한다.
-outputs/
+outputs/*
+!outputs/figures/
+outputs/figures/*
 !outputs/figures/*.png
 
 # OS / 편집기
 .DS_Store
 Thumbs.db
 .vscode/
+
+# forge headroom이 압축 전 원본을 보관하는 폴더
+.headroom-cache/
+
+# 테스트 입력·기준 결과는 커밋한다(위의 *.csv·*.parquet 규칙의 예외). 재현성과 골든 비교에 필요하다.
+!tests/fixtures/**
+!tests/golden/**
