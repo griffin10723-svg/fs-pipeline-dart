@@ -40,7 +40,10 @@
   - 연결(CFS)과 별도(OFS)가 같은 응답에 섞여 있다. 구분 필드를 반드시 확인한다.
   - 계정과목명이 회사마다 다르다. 표준화 사전 없이 병합하면 조용히 틀린다.
   - 결산월 변경 기업은 한 해에 사업연도가 둘이거나 없을 수 있다.
-  - 정정공시가 있으면 같은 기업·연도에 값이 두 개다. 어느 쪽을 쓸지 DECISIONS D-004에 명시한다.
+  - 정정공시가 있으면 같은 기업·연도에 값이 두 개다. 재무 API(`fnlttSinglAcntAll`)는 최종 정정본 1판만 준다. 정정이 1년 뒤에도 나온다(KB 2024). 응답 `rcept_no`를 공시목록 마지막 정정과 대조한다(D-004).
+  - 금융업은 2022 사업연도 이전 XBRL이 없다(`013`·`014`). 금융지주는 영업이익 ID가 `ifrs-full_ProfitLossFromOperatingActivities`다(D-009·D-010).
+  - 자본변동표(SCE)는 `account_id`가 한 표 안에서 겹친다. 연도 간 비교·키 조인에 쓰지 않는다.
+  - Windows에서 `python`은 Store 별칭이라 실패한다(exit 49). `uv run python`을 쓴다.
   - `merge` 후 행 수가 변하면 대개 중복 키다. 합칠 때마다 행 수를 확인한다.
 - 검증: 표본 20건을 DART 웹 사업보고서 원문에서 눈으로 대조. 기록은 `docs/validation.md`와 `notebooks/verify.ipynb`.
 
