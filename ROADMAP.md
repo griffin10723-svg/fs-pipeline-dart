@@ -44,4 +44,5 @@
 - [ ] `/forge-quant:stage-gate` (args `{stage: 4}`) 통과 — 플랫폼 연결은 P8에서 하므로 이 레포에서는 NA
 
 ## Should (시간이 남으면)
+- 비XBRL 원문 파서 (D-013) — 새 세션에서 설계부터, 인계 `docs/handoff-document-parser.md`. 2023~2025 XBRL 일치가 적용 조건
 - 결산월 변경 기업 처리 · parquet 캐싱 · 주석 표(특수관계자·충당부채·리스) 파싱 1건 시험
