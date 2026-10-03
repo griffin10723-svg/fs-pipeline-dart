@@ -91,9 +91,9 @@ def analyze(subject: dict, context: dict | None = None, **params) -> dict:
 ```bash
 uv sync
 cp .env.example .env        # DART_API_KEY 채우기
-python -m src.collect --corps 5 --years 2023-2025   # v0 (D-009)
-python -m src.standardize
-python -m src.ratios
+uv run python -m fs_pipeline_dart.collect --corps 5 --years 2023-2025   # v0 (D-009)
+uv run python -m fs_pipeline_dart.standardize   # Stage 2
+uv run python -m fs_pipeline_dart.ratios        # Stage 2
 ```
 
 ---

@@ -1,0 +1,31 @@
+[project]
+name = "fs-pipeline-dart"
+version = "0.1.0"
+description = "DART 연결재무제표 수집·표준화 파이프라인 (P1)"
+authors = [
+    { name = "최재영", email = "320567054+griffin10723-svg@users.noreply.github.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "pandas>=3.0.6",
+    "pyarrow>=25.0.1",
+    "python-dotenv>=1.2.4",
+    "requests>=2.34.2",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.12,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.16.10",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "C4", "DTZ"]
+ignore = ["E501"]  # 한글 주석 줄이 길다
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
