@@ -46,7 +46,11 @@
   - 금융업은 2022 사업연도 이전 XBRL이 없다(`013`·`014`). 금융지주는 영업이익 ID가 `ifrs-full_ProfitLossFromOperatingActivities`다(D-009·D-010).
   - 자본변동표(SCE)는 `account_id`가 한 표 안에서 겹친다. 연도 간 비교·키 조인에 쓰지 않는다.
   - Windows에서 `python`은 Store 별칭이라 실패한다(exit 49). `uv run python`을 쓴다.
-  - `merge` 후 행 수가 변하면 대개 중복 키다. 합칠 때마다 행 수를 확인한다.
+  - `merge` 후 행 수가 변하면 대개 중복 키다. 합칠 때마다 행 수를 확인한다
+  - 유일성 키(`ord`·`account_detail` 포함)와 조인용 의미 키(`ord` 제외)를 나눈다(D-011). 표준 ID가 없는 `-표준계정코드 미사용-` 행은 의미 키가 겹치므로 조인에서 뺀다
+  - 재무 API는 2015 사업연도부터 `000`이다(D-012). 금융업 2022 이전은 API 전 조합이 `013`이지만 원문(`document.xml`)에는 값이 있다(D-013)
+  - `load_dotenv()`는 스크립트 위치에서 위로 `.env`를 찾는다. 다른 폴더의 스크립트는 `find_dotenv(usecwd=True)`를 쓴다
+  - forge 커밋 게이트는 테스트의 `skipif`를 변조로 본다. 그런 테스트는 `test:` 단독 커밋으로 올린다. 훅이 막으면 같은 명령 안의 편집도 실행되지 않으므로 편집과 커밋을 나눠 실행한다.
 - 검증: 표본 20건을 DART 웹 사업보고서 원문에서 눈으로 대조. 기록은 `docs/validation.md`와 `notebooks/verify.ipynb`.
 
 ---
