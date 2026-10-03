@@ -1,5 +1,7 @@
 """validate()가 결정 기록(D-001·D-003·D-004·D-011)을 실제로 강제하는지 본다."""
 
+from pathlib import Path
+
 import pandas as pd
 import pytest
 
@@ -77,3 +79,11 @@ def test_placeholder_id_rows_may_share_semantic_key():
 def test_display_unit_infers_million_and_won():
     assert v.display_unit(pd.Series([5 * M, 7 * M, 11 * M], dtype="Int64")) == M
     assert v.display_unit(pd.Series([5 * M + 1, 7 * M], dtype="Int64")) == 1
+
+
+@pytest.mark.skipif(
+    not Path("data/processed/fs_long.parquet").exists(),
+    reason="수집 결과 없음: collect를 먼저 실행",
+)
+def test_collected_v0_data_passes():
+    assert v.check(pd.read_parquet("data/processed/fs_long.parquet")) == []
