@@ -19,7 +19,7 @@
 |---|---|
 | **Must** | KOSPI200 × 최근 5개년 연결 재무제표(XBRL 전체 계정) 수집 · 계정과목 표준화 사전 · 재무비율 30종 산출 · 표본 대조 검증 노트북 · **다른 레포가 import할 로더 함수** · **`core/analyze.py`의 `analyze(subject, context=None, **params)` 진입 함수 + `SAMPLE`** |
 | **Should** | 정정공시(재작성) 반영 · 결산월 변경 기업 처리 · parquet 캐싱 · **주석 표(특수관계자·충당부채·리스) 파싱 1건 시험** — N2·N9·M1이 재사용 (본격 구현은 Won't) |
-| **Won't** | 코스닥 · 분기 데이터 · 별도재무제표 · 실시간 갱신 · 웹 UI |
+| **Won't** | 코스닥 · 분기 데이터 · 별도재무제표 · 실시간 갱신 · 웹 UI · 금융업 2022 이전 연도(XBRL 없음, D-009) |
 
 **표본 단위:** 1건 = 기업×연도. 무작위 추출 시드를 기록하고, 경계 사례(정정공시·결산월 변경) 1건 이상을 별도로 넣는다. 공통 규칙은 `~/quant/docs/00-curriculum.md` §4.1.
 
@@ -88,7 +88,7 @@ def analyze(subject: dict, context: dict | None = None, **params) -> dict:
 ```bash
 uv sync
 cp .env.example .env        # DART_API_KEY 채우기
-python -m src.collect --corps 5 --years 2022-2024   # v0
+python -m src.collect --corps 5 --years 2023-2025   # v0 (D-009)
 python -m src.standardize
 python -m src.ratios
 ```
@@ -98,7 +98,7 @@ python -m src.ratios
 ## 회계·재무적 판단
 
 `DECISIONS.md`에 번호(D-001…)를 붙여 기록하고, README 3번 섹션에는 요약 표와 링크만 둔다. 코드에서는 `# 회계판단: D-번호` 주석을 남긴다.
-결정된 것: D-001 연결 기준, D-002 ROE 범위 일치 원칙. 미정: D-004 정정공시(Stage 1 전), D-005 표준화 규칙·D-002 세부(Stage 2 전), D-006 리스 1116호 비교가능성, D-007 판관비 분류. D-003 계정 식별 방법은 작업자 확인이 필요하다.
+결정된 것: D-001 연결 기준, D-002 ROE 범위 일치 원칙, D-004 정정공시·전기 재작성, D-008 v0 기업, D-009 v0 연도, D-010 금융업 CIR(분모 미정). 미정: D-005 표준화 규칙·D-002 세부(Stage 2 전), D-006 리스 1116호 비교가능성, D-007 판관비 분류. D-003 계정 식별 방법은 작업자 확인이 필요하다.
 
 **비회계사 지원자는 이 판단 자체를 못 한다. 이 섹션이 차별화 지점이다.**
 
