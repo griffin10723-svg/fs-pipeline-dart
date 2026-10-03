@@ -25,6 +25,7 @@ outputs/*
 !outputs/figures/
 outputs/figures/*
 !outputs/figures/*.png
+!outputs/figures/.gitkeep
 
 # OS / 편집기
 .DS_Store
