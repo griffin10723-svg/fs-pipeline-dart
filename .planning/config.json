@@ -1,0 +1,177 @@
+{
+  "model_profile": "balanced",
+  "commit_docs": true,
+  "parallelization": true,
+  "search_gitignored": false,
+  "brave_search": false,
+  "firecrawl": false,
+  "exa_search": false,
+  "tavily_search": false,
+  "ref_search": false,
+  "perplexity": false,
+  "jina": false,
+  "git": {
+    "branching_strategy": "none",
+    "create_tag": true,
+    "phase_branch_template": "gsd/phase-{phase}-{slug}",
+    "milestone_branch_template": "gsd/{milestone}-{slug}",
+    "quick_branch_template": null
+  },
+  "workflow": {
+    "research": true,
+    "plan_check": true,
+    "verifier": true,
+    "nyquist_validation": true,
+    "auto_advance": false,
+    "node_repair": true,
+    "node_repair_budget": 2,
+    "ui_phase": true,
+    "ui_safety_gate": true,
+    "ai_integration_phase": true,
+    "api_coverage_gate": true,
+    "human_verify_mode": "end-of-phase",
+    "context_guard_mode": "warn",
+    "text_mode": false,
+    "compact_content": false,
+    "research_before_questions": false,
+    "discuss_mode": "discuss",
+    "skip_discuss": false,
+    "code_review": true,
+    "code_review_depth": "standard",
+    "code_review_command": null,
+    "pattern_mapper": true,
+    "plan_bounce": false,
+    "plan_bounce_script": null,
+    "plan_bounce_passes": 2,
+    "auto_prune_state": false,
+    "post_planning_gaps": true,
+    "security_enforcement": true,
+    "security_asvs_level": 1,
+    "security_block_on": "high",
+    "plan_chunked": true,
+    "code_review_point": "execute:wave:post",
+    "tdd_mode": true,
+    "test_command": "uv run pytest -q -m \"not live\""
+  },
+  "ship": {
+    "pr_body_sections": []
+  },
+  "hooks": {
+    "context_warnings": true
+  },
+  "project_code": null,
+  "phase_naming": "sequential",
+  "agent_skills": {
+    "gsd-planner": [
+      "global:forge:dev-rules",
+      "global:forge-quant:quant-rules",
+      "global:forge:karpathy-guidelines",
+      "global:forge:api-and-interface-design"
+    ],
+    "gsd-plan-checker": [
+      "global:forge:dev-rules",
+      "global:forge-quant:quant-rules"
+    ],
+    "gsd-executor": [
+      "global:forge:dev-rules",
+      "global:forge-quant:quant-rules",
+      "global:forge:karpathy-guidelines",
+      "global:forge:test-driven-development",
+      "global:python-patterns",
+      "global:python-testing",
+      "global:forge:headroom"
+    ],
+    "gsd-verifier": [
+      "global:forge:dev-rules",
+      "global:forge-quant:quant-rules",
+      "global:forge:verification-before-completion"
+    ],
+    "gsd-phase-researcher": [
+      "global:forge:search-first",
+      "global:forge:source-driven-development"
+    ],
+    "gsd-project-researcher": [
+      "global:forge:search-first",
+      "global:forge:source-driven-development"
+    ],
+    "gsd-code-reviewer": [
+      "global:forge:dev-rules",
+      "global:forge-quant:quant-rules",
+      "global:forge:karpathy-guidelines",
+      "global:forge:code-review-and-quality",
+      "global:forge:security-and-hardening"
+    ],
+    "gsd-code-fixer": [
+      "global:forge:dev-rules",
+      "global:forge-quant:quant-rules",
+      "global:forge:karpathy-guidelines",
+      "global:forge:receiving-code-review"
+    ],
+    "gsd-debugger": [
+      "global:forge:dev-rules",
+      "global:forge-quant:quant-rules",
+      "global:forge:systematic-debugging"
+    ],
+    "gsd-codebase-mapper": [
+      "global:forge:dev-rules",
+      "global:forge-quant:quant-rules",
+      "global:forge:headroom"
+    ],
+    "gsd-debug-session-manager": [
+      "global:forge:dev-rules",
+      "global:forge-quant:quant-rules",
+      "global:forge:systematic-debugging"
+    ],
+    "gsd-advisor-researcher": [
+      "global:forge:search-first",
+      "global:forge:source-driven-development"
+    ]
+  },
+  "claude_md_path": "./.claude/CLAUDE.md",
+  "plan_review": {
+    "source_grounding": true,
+    "source_grounding_authority": "grep"
+  },
+  "mode": "interactive",
+  "planning": {
+    "commit_docs": true
+  },
+  "graphify": {
+    "enabled": true,
+    "auto_update": true
+  },
+  "mempalace": {
+    "enabled": false
+  },
+  "model_overrides": {
+    "gsd-debugger": "opus",
+    "gsd-codebase-mapper": "haiku",
+    "gsd-research-synthesizer": "haiku",
+    "gsd-verifier": "opus",
+    "gsd-planner": "opus",
+    "gsd-roadmapper": "opus",
+    "gsd-pattern-mapper": "opus",
+    "gsd-assumptions-analyzer": "opus",
+    "gsd-advisor-researcher": "sonnet",
+    "gsd-phase-researcher": "sonnet",
+    "gsd-project-researcher": "sonnet",
+    "gsd-executor": "sonnet",
+    "gsd-code-fixer": "sonnet",
+    "gsd-plan-checker": "sonnet",
+    "gsd-code-reviewer": "sonnet",
+    "gsd-debug-session-manager": "sonnet",
+    "gsd-doc-classifier": "sonnet",
+    "gsd-doc-synthesizer": "sonnet"
+  },
+  "effort": {
+    "agent_overrides": {
+      "gsd-executor": "medium",
+      "gsd-code-fixer": "medium",
+      "gsd-planner": "high",
+      "gsd-verifier": "high",
+      "gsd-code-reviewer": "high",
+      "gsd-debugger": "xhigh"
+    }
+  },
+  "granularity": "standard"
+}
