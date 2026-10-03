@@ -9,6 +9,7 @@ from pathlib import Path
 import pandas as pd
 
 from fs_pipeline_dart import dart
+from fs_pipeline_dart.validate import validate
 
 log = logging.getLogger(__name__)
 
@@ -56,9 +57,7 @@ def build_parquet(paths: list[Path]) -> pd.DataFrame:
     out = pd.concat(frames, ignore_index=True)
     # merge가 아니라 concat이라 행 수가 합과 같아야 한다. 다르면 코드 오류다
     assert len(out) == sum(len(f) for f in frames)
-    dup = out.duplicated(dart.KEY_COLS).sum()
-    if dup:
-        raise ValueError(f"유일성 키 중복 {dup}행 (D-011)")
+    validate(out)  # 위반이 있으면 parquet을 쓰기 전에 멈춘다
     OUT.parent.mkdir(parents=True, exist_ok=True)
     out.to_parquet(OUT, index=False)
     log.info("저장 %s 행=%d", OUT, len(out))
