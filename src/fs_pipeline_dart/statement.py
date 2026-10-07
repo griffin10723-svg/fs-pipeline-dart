@@ -20,7 +20,7 @@ TOTALS = ("자산총계", "부채총계", "자본총계")
 _PERIOD = re.compile(r"제\s*(\d+)")
 _NOTE = re.compile(r"\(\s*주(석)?[\s\d,.\-~및]*\)$")  # 끝의 '(주석4,6)' '(주29)'
 _KO = "가나다라마바사아자차카타파하"  # 번호로 쓰는 글자만. [가-하]는 거의 모든 음절이라 '자산총계'의 '자'를 먹는다
-_NUMBERING = re.compile(rf"^(?:(?:[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ]+|\d+|[{_KO}])\.|\((?:\d+|[{_KO}])\))")
+_NUMBERING = re.compile(rf"^(?:(?:[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩⅪⅫ]+|[IVXL]+|\d+|[{_KO}])\.|\((?:\d+|[{_KO}])\))")
 
 COLUMNS = ["corp_code", "fiscal_year", "sj_div", "account_id", "ord", "account_nm", "account_detail",
            "amount", "currency", "rcept_no", "reprt_code", "source"]
@@ -31,7 +31,7 @@ class StatementError(Exception):
 
 
 def norm(name: str) -> str:
-    """계정명 정규화 (D-014): 공백, 앞 번호(Ⅰ. 1. 가. (1)), 끝 주석번호를 뗀다. 그 밖의 글자는 그대로."""
+    """계정명 정규화 (D-014): 공백, 앞 번호(Ⅰ. XII. 1. 가. (1)), 끝 주석번호를 뗀다. 그 밖의 글자는 그대로."""
     s = re.sub(r"\s+", "", name)
     s = _NUMBERING.sub("", s)
     return _NOTE.sub("", s)
