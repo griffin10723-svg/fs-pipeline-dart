@@ -224,18 +224,21 @@ def build_dictionary(pairs: pd.DataFrame, rmap: dict[str, str] | None = None) ->
 
 
 def manual_dictionary(path: Path = MANUAL) -> pd.DataFrame:
-    """작업자가 승인한(status=approved) 수작업 매핑만. 회계판단: D-014 수작업 항목은 작업자 승인."""
-    cols = ["corp_code", "kind", "name", "account_id", "flip"]
+    """작업자가 결정한 수작업 매핑(status = approved·rejected). 제안(proposed)은 쓰지 않는다.
+
+    회계판단: D-014 수작업 항목은 작업자 승인. 거절(rejected)은 기록만이 아니라 자동 사전도 막는다.
+    """
+    cols = ["corp_code", "kind", "name", "account_id", "flip", "status"]
     if not path.exists():
         return pd.DataFrame(columns=cols)
     m = pd.read_csv(path, dtype={"corp_code": str}, encoding="utf-8")
-    return m[m["status"] == "approved"][cols].astype({"flip": bool})
+    return m[m["status"].isin(["approved", "rejected"])][cols].astype({"flip": bool})
 
 
 def _assign(doc: pd.DataFrame, dictionary: pd.DataFrame, kind: str,
             manual: pd.DataFrame | None = None) -> pd.DataFrame:
-    """ID·부호를 정한다(금액은 아직 원문 부호). method: core · manual · name · count_guard · transition_guard ·
-    name_dup · none.
+    """ID·부호를 정한다(금액은 아직 원문 부호). method: core · manual · rejected · name · count_guard ·
+    transition_guard · name_dup · none.
 
     순서: 이름 고정 계정 → 승인된 수작업 매핑 → 자동 사전.
     """
@@ -249,7 +252,10 @@ def _assign(doc: pd.DataFrame, dictionary: pd.DataFrame, kind: str,
             method = "core"
         elif (c, key) in man.index:
             row = man.loc[(c, key)]
-            aid, method, flip = row["account_id"], "manual", bool(row["flip"])
+            if row["status"] == "rejected":  # 작업자가 거절한 매핑은 자동 사전·경계 장치와 상관없이 붙이지 않는다
+                aid, method = NO_ID, "rejected"
+            else:
+                aid, method, flip = row["account_id"], "manual", bool(row["flip"])
         elif (c, key) in m.index:
             row = m.loc[(c, key)]
             if (cnt > 1 or row["count"] > 1) and cnt != row["count"]:
@@ -317,7 +323,7 @@ def bridge(doc: pd.DataFrame, ref: pd.DataFrame, dictionary: pd.DataFrame, kind:
     fixed = set(out.loc[out["method"].isin(["core", "manual"]), "account_id"])
     for i, r in out.iterrows():
         # 이름 고정·작업자 승인 행은 금액 짝으로 덮지 않는다
-        if out.at[i, "method"] in ("core", "manual") or pd.isna(r["amount"]):
+        if out.at[i, "method"] in ("core", "manual", "rejected") or pd.isna(r["amount"]):
             continue
         a = int(r["amount"])
         if ((doc_amt - abs(a)).abs() <= tol).sum() != 1:

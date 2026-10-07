@@ -134,7 +134,8 @@ def test_tolerance_ignores_per_share_rows():
 
 
 def test_bridge_does_not_override_manual(monkeypatch):
-    man = pd.DataFrame([{"corp_code": "C", "kind": "IS", "name": "이자비용", "account_id": "int_exp", "flip": True}])
+    man = pd.DataFrame([{"corp_code": "C", "kind": "IS", "name": "이자비용", "account_id": "int_exp", "flip": True,
+                         "status": "approved"}])
     monkeypatch.setattr(m, "manual_dictionary", lambda path=None: man)
     ref = pd.DataFrame({"account_id": ["other", "int_exp"], "amount": [-7 * M, 9 * M]}).astype({"amount": "Int64"})
     out = m.bridge(_doc(2021, [("이자비용", -7 * M), ("기타", 9 * M)], sj="CIS"), ref, _dict([]), "IS")
@@ -156,3 +157,16 @@ def test_transition_guard_blocks_name_match_across_standard_change():
     assert out[["account_id", "method"]].values.tolist() == [[NO_ID, "transition_guard"], ["cash", "name"]]
     # 같은 쪽(2023 → 2024)은 막지 않는다
     assert m.apply(_doc(2024, [("보험비용", -9 * M)], sj="CIS"), d, "IS")["method"].tolist() == ["name"]
+
+
+def test_rejected_manual_blocks_auto_dictionary_without_transition_guard(monkeypatch):
+    # quant-wrap 3번에서 나옴: 거절 기록이 경계 장치 하나에만 기대고 있었다
+    man = pd.DataFrame([{"corp_code": "C", "kind": "IS", "name": "보험비용", "account_id": "ins", "flip": False,
+                         "status": "rejected"}])
+    monkeypatch.setattr(m, "manual_dictionary", lambda path=None: man)
+    monkeypatch.setattr(m, "TRANSITIONS", [])  # 경계 장치를 지워도
+    d = pd.DataFrame([{"corp_code": "C", "name": "보험비용", "account_id": "ins", "year": 2023, "count": 1, "flip": False}])
+    out = m.apply(_doc(2022, [("2. 보험비용", -16 * M)], sj="CIS"), d, "IS")
+    assert out[["account_id", "method"]].values.tolist() == [[NO_ID, "rejected"]]
+    ref = pd.DataFrame({"account_id": ["ins"], "amount": [16 * M]}).astype({"amount": "Int64"})
+    assert m.bridge(_doc(2022, [("2. 보험비용", -16 * M)], sj="CIS"), ref, d, "IS")["method"].tolist() == ["rejected"]
