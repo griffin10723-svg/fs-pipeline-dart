@@ -16,6 +16,7 @@ ID 선택 (회계판단: D-005 부분, 작업자 2026-10-07):
 import argparse
 import json
 import logging
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -51,6 +52,23 @@ SJ = {"BS": ("BS",), "IS": ("IS", "CIS")}
 # 금액이 자산총계와 같아 짝짓기로는 늘 모호한 합계 행. 핵심 계정 검사에는 넣지 않는다
 FIXED_BS = CORE | {"부채와자본총계": "ifrs-full_EquityAndLiabilities", "자본과부채총계": "ifrs-full_EquityAndLiabilities"}
 MANUAL = Path(__file__).with_name("manual_mapping.csv")
+
+# 회계판단: D-006 기준서 전환. 사전을 만든 해가 시행 뒤이고 붙일 해가 시행 전이면, 이름이 같아도 범위가
+# 다를 수 있어 자동으로 붙이지 않는다(KB 2022 보험비용: 1104호 16.44조 vs 같은 해 1117호 8.76조).
+# 작업자가 manual_mapping.csv에서 승인하면 붙는다. (기준서, 시행 첫 사업연도, 해당 계정명 패턴)
+TRANSITIONS = [
+    ("1117호 보험계약", 2023, re.compile(r"보험")),
+    ("1109호 금융상품", 2018, re.compile(r"금융자산|금융부채|금융상품|대출채권|대손|충당금|손상")),
+    ("1116호 리스", 2019, re.compile(r"리스|사용권")),
+]
+
+
+def crossed_transition(name: str, from_year: int, to_year: int) -> str | None:
+    """사전 해(from_year)에서 붙일 해(to_year)로 갈 때 넘는 기준서 전환. 없으면 None."""
+    for std, first, pat in TRANSITIONS:
+        if to_year < first <= from_year and pat.search(name):
+            return std
+    return None
 
 
 def core_id(kind: str, name: str) -> str | None:
@@ -216,7 +234,8 @@ def manual_dictionary(path: Path = MANUAL) -> pd.DataFrame:
 
 def _assign(doc: pd.DataFrame, dictionary: pd.DataFrame, kind: str,
             manual: pd.DataFrame | None = None) -> pd.DataFrame:
-    """ID·부호를 정한다(금액은 아직 원문 부호). method: core · manual · name · count_guard · name_dup · none.
+    """ID·부호를 정한다(금액은 아직 원문 부호). method: core · manual · name · count_guard · transition_guard ·
+    name_dup · none.
 
     순서: 이름 고정 계정 → 승인된 수작업 매핑 → 자동 사전.
     """
@@ -224,7 +243,7 @@ def _assign(doc: pd.DataFrame, dictionary: pd.DataFrame, kind: str,
     man = manual_dictionary() if manual is None else manual
     man = man[man["kind"] == kind].set_index(["corp_code", "name"])
     ids, methods, flips = [], [], []
-    for c, key, cnt in zip(doc["corp_code"], name_keys(doc), _name_counts(doc)):
+    for c, y, key, cnt in zip(doc["corp_code"], doc["fiscal_year"], name_keys(doc), _name_counts(doc)):
         flip = False
         if aid := core_id(kind, key):
             method = "core"
@@ -236,6 +255,10 @@ def _assign(doc: pd.DataFrame, dictionary: pd.DataFrame, kind: str,
             if (cnt > 1 or row["count"] > 1) and cnt != row["count"]:
                 log.warning("%s %s: 같은 이름 %d개(사전 %s년 %d개), ID를 붙이지 않는다", c, key, cnt, row["year"], row["count"])
                 aid, method = NO_ID, "count_guard"
+            elif std := crossed_transition(key, int(row["year"]), int(y)):
+                log.warning("%s %s %s: %s 경계를 넘는 이름 매칭(%s) — 승인 전에는 붙이지 않는다",
+                            c, y, key, std, row["account_id"])
+                aid, method = NO_ID, "transition_guard"
             else:
                 aid, method, flip = row["account_id"], "name", bool(row.get("flip", False))
         else:

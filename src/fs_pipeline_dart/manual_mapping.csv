@@ -5,3 +5,6 @@ corp_code,kind,name,account_id,flip,status,proposed_by,note,approved
 00688996,IS,이자비용,ifrs-full_InterestExpense,True,approved,AI 2026-10-07,2022 이전 1개(은행 이자비용). 2023부터는 보험금융이자비용을 포함한 합계와 은행분 두 줄이라 같은 범위가 아니다. 원문 음수·XBRL 양수,작업자 2026-10-07 (1117호 단절 기록 조건)
 00688996,BS,파생금융자산,ifrs-full_DerivativeFinancialAssets,False,approved,AI 2026-10-07,2023년부터 파생상품자산,작업자 2026-10-07
 00688996,BS,파생금융부채,ifrs-full_DerivativeFinancialLiabilities,False,approved,AI 2026-10-07,2023년부터 파생상품부채,작업자 2026-10-07
+00688996,BS,보험계약부채,ifrs-full_InsuranceContractsIssuedThatAreLiabilities,False,approved,AI 2026-10-07,같은 개념·측정 변경(1104 책임준비금 → 1117 이행현금흐름+CSM). 2022 원래 58.23조 · 1117 재작성 45.97조. 1117호 단절 기록(D-006),작업자 2026-10-07
+00688996,IS,보험비용,dart_OperatingExpenseInsurance,True,rejected,AI 2026-10-07,1104 보험비용은 저축 부분(책임준비금 전입)을 포함해 1117 보험서비스비용과 개념이 다르다. 2022 원래 16.44조 · 1117 재작성 8.76조,작업자 2026-10-07
+00688996,IS,보험수익,dart_OperatingIncomeInsurance,False,rejected,AI 2026-10-07,1104 보험수익(보험료)과 1117 보험수익은 개념이 다르다. 2022 원래 17.14조 · 1117 재작성 10.07조,작업자 2026-10-07

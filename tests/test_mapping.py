@@ -145,3 +145,14 @@ def test_bridge_does_not_override_manual(monkeypatch):
 def test_chain_back_needs_contiguous_years():
     with pytest.raises(ValueError, match="이어져야"):
         m.chain_back("C", 2023, [2015, 2016], pd.DataFrame(), {}, {})
+
+
+def test_transition_guard_blocks_name_match_across_standard_change():
+    # D-006: 2023년(1117호 뒤) 사전의 '보험비용'을 2022년(1104호)에 이름만으로 붙이지 않는다
+    d = pd.DataFrame([{"corp_code": "C", "name": "보험비용", "account_id": "ins_exp", "year": 2023, "count": 1,
+                       "flip": False}, {"corp_code": "C", "name": "현금", "account_id": "cash", "year": 2023,
+                                        "count": 1, "flip": False}])
+    out = m.apply(_doc(2022, [("2. 보험비용", -16 * M), ("현금", 5 * M)], sj="CIS"), d, "IS")
+    assert out[["account_id", "method"]].values.tolist() == [[NO_ID, "transition_guard"], ["cash", "name"]]
+    # 같은 쪽(2023 → 2024)은 막지 않는다
+    assert m.apply(_doc(2024, [("보험비용", -9 * M)], sj="CIS"), d, "IS")["method"].tolist() == ["name"]
