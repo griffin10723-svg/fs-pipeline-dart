@@ -44,7 +44,7 @@ def test_norm(raw, want):
 
 
 def test_parse_split_columns_takes_current_period_in_won():
-    df = st.parse_bs(_t(SPLIT), "00688996", 2019, "R1")
+    df = st.parse_statement(_t(SPLIT), "BS", "00688996", 2019, "R1")
     assert df["amount"].isna().iloc[0]  # '자 산' 머리 행은 금액이 없다
     assert df["amount"].tolist()[1:3] == [20 * 10**6, 100 * 10**6]
     assert set(df["source"]) == {"document"} and set(df["account_id"]) == {st.NO_ID}
@@ -59,12 +59,12 @@ def test_identity_off_by_more_than_one_unit_fails():
     bad = [r[:] for r in SPLIT]
     bad[5][2] = "28"
     with pytest.raises(st.StatementError, match="자산 - 부채 - 자본"):
-        st.parse_bs(_t(bad), "C", 2019, "R1")
+        st.parse_statement(_t(bad), "BS", "C", 2019, "R1")
 
 
 def test_missing_unit_fails():
     with pytest.raises(st.StatementError, match="단위"):
-        st.parse_bs(_t(SPLIT, unit=None), "C", 2019, "R1")
+        st.parse_statement(_t(SPLIT, unit=None), "BS", "C", 2019, "R1")
 
 
 def test_find_bs_needs_exactly_one_candidate():
@@ -72,9 +72,9 @@ def test_find_bs_needs_exactly_one_candidate():
     bs = _t(SPLIT, index=1)
     separate = _t(SPLIT, section=("III. 재무에 관한 사항", "4. 재무제표"), index=2)
     note = _t(SPLIT, section=("III. 재무에 관한 사항", "3. 연결재무제표 주석"), index=3)
-    assert st.find_bs(Document("x", tables=[head, bs, separate, note])).index == 1
+    assert st.find_statement(Document("x", tables=[head, bs, separate, note]), "BS").index == 1
     with pytest.raises(st.StatementError, match="후보 2개"):
-        st.find_bs(Document("x", tables=[bs, _t(SPLIT, index=4)]))
+        st.find_statement(Document("x", tables=[bs, _t(SPLIT, index=4)]), "BS")
 
 
 def _zip(files):
@@ -139,3 +139,29 @@ def test_income_statement_without_net_income_fails():
     rows = [r for r in IS_ROWS if "당기순이익" not in r[0]] + [["계속영업당기순이익", "1", "1"]]
     with pytest.raises(st.StatementError, match="당기순이익"):
         st.parse_statement(_t(rows), "IS", "C", 2015, "R1")
+
+
+def test_dash_in_split_column_is_empty_side():
+    # 리뷰: 나눠진 두 칸 중 한쪽이 '-'면 빈 칸으로 본다
+    rows = [r[:] for r in SPLIT]
+    rows[2] = ["Ⅰ. 현금 및 예치금", "-", "20", "", ""]
+    df = st.parse_statement(_t(rows), "BS", "C", 2019, "R1")
+    assert df["amount"].iloc[1] == 20 * 10**6
+
+
+def test_loss_year_income_statement_found():
+    # 리뷰: '영업손실'·'당기순손실'만 있는 해도 손익 표로 잡는다
+    loss = _t([["과 목", "제 3 기"], ["영업손실", "(5)"], ["당기순손실", "(7)"]])
+    assert st.find_statement(Document("x", tables=[loss]), "IS") is loss
+
+
+def test_rcept_no_format_checked_before_file_name():
+    with pytest.raises(ValueError, match="접수번호"):
+        d._download("../../etc/passwd")
+
+
+def test_oversized_xml_member_rejected(monkeypatch):
+    from docparse import dart_xml
+    monkeypatch.setattr(dart_xml, "MAX_XML", 10)
+    with pytest.raises(ValueError, match="상한"):
+        d.body_xml(_zip([("R1.xml", "11011")]))

@@ -3,9 +3,7 @@
 계정 ID는 여기서 붙이지 않는다(전부 `-표준계정코드 미사용-`). ID는 mapping.py가 XBRL 짝짓기 사전으로 붙인다.
 """
 
-import io
 import re
-import zipfile
 
 import pandas as pd
 
@@ -13,7 +11,7 @@ from docparse.dart_xml import read_xml
 from docparse.model import Document, Table
 from docparse.units import parse_unit, to_won
 from fs_pipeline_dart.dart import ANNUAL
-from fs_pipeline_dart.document import BODY_MARK
+from fs_pipeline_dart.document import body_xml
 from fs_pipeline_dart.validate import NO_ID
 
 TOTALS = ("자산총계", "부채총계", "자본총계")
@@ -44,11 +42,10 @@ def norm(name: str) -> str:
 
 def body_document(data: bytes, rcept_no: str) -> Document:
     """zip에서 사업보고서 본문 xml 하나를 읽는다. 감사보고서(첨부)는 쓰지 않는다."""
-    with zipfile.ZipFile(io.BytesIO(data)) as zf:
-        names = [n for n in zf.namelist() if BODY_MARK.search(zf.read(n)[:2000])]
-        if len(names) != 1:
-            raise StatementError(f"{rcept_no}: 본문 xml이 {len(names)}개")
-        return read_xml(zf.read(names[0]), f"{rcept_no}/{names[0].lstrip('/')}")
+    body = body_xml(data)
+    if body is None:
+        raise StatementError(f"{rcept_no}: 본문 xml이 없다")
+    return read_xml(body[1], f"{rcept_no}/{body[0]}")
 
 
 def _labels(t: Table) -> set[str]:
@@ -65,8 +62,8 @@ def _in_section(t: Table) -> bool:
 
 
 def _has_income_rows(labels: set[str]) -> bool:
-    op = any("영업이익" in x or "영업손익" in x for x in labels)
-    net = any("당기순이익" in x or "당기순손익" in x for x in labels)
+    op = any(re.search(r"영업(이익|손익|손실)", x) for x in labels)
+    net = any(re.search(r"당기순(이익|손익|손실)", x) for x in labels)
     return op and net
 
 
@@ -90,10 +87,6 @@ def find_statement(doc: Document, kind: str) -> Table:
     if len(cands) != 1:
         raise StatementError(f"{doc.source}: 연결 {kind} 후보 {len(cands)}개 {[t.index for t in cands]}")
     return cands[0]
-
-
-def find_bs(doc: Document) -> Table:
-    return find_statement(doc, "BS")
 
 
 def current_columns(header: list[str], period: int = 0) -> list[int]:
@@ -125,7 +118,7 @@ def parse_statement(t: Table, kind: str, corp_code: str, year: int, rcept_no: st
         sj = "CIS" if any("총포괄" in x for x in _labels(t)) else "IS"
     rows = []
     for ord_, r in enumerate(grid[1:], start=1):
-        vals = [r[c] for c in cols if r[c].strip() not in ("",)]
+        vals = [r[c] for c in cols if r[c].strip() not in ("", "-", "–", "—")]  # 나눠진 두 칸 중 빈 쪽
         # colspan으로 펼친 같은 글자는 한 값이다
         vals = list(dict.fromkeys(vals))
         if len(vals) > 1:
@@ -139,10 +132,6 @@ def parse_statement(t: Table, kind: str, corp_code: str, year: int, rcept_no: st
     out = pd.DataFrame(rows, columns=COLUMNS).astype({"amount": "Int64", "ord": int, "fiscal_year": int})
     check_bs(out, unit) if kind == "BS" else check_is(out)
     return out
-
-
-def parse_bs(t: Table, corp_code: str, year: int, rcept_no: str, period: int = 0) -> pd.DataFrame:
-    return parse_statement(t, "BS", corp_code, year, rcept_no, period)
 
 
 def _per_share(cell: str, label: str):
@@ -178,14 +167,3 @@ def check_bs(df: pd.DataFrame, unit: int) -> None:
     gap = vals["자산총계"] - vals["부채총계"] - vals["자본총계"]
     if abs(gap) > unit:
         raise StatementError(f"자산 - 부채 - 자본 = {gap:,}원 (허용 ±{unit:,})")
-
-
-def read_bs(data: bytes, corp_code: str, year: int, rcept_no: str) -> pd.DataFrame:
-    """원문 zip → 연결 재무상태표 D-011 행 (source=document)."""
-    return parse_bs(find_bs(body_document(data, rcept_no)), corp_code, year, rcept_no)
-
-
-def read_statement(data: bytes, kind: str, corp_code: str, year: int, rcept_no: str) -> pd.DataFrame:
-    """원문 zip → 연결 BS 또는 IS(CIS) D-011 행 (source=document)."""
-    t = find_statement(body_document(data, rcept_no), kind)
-    return parse_statement(t, kind, corp_code, year, rcept_no)

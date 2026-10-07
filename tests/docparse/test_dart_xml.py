@@ -84,3 +84,9 @@ def test_unit_in_data_row_label_is_not_table_unit():
 <TABLE><TR><TD></TD><TD>제 56 기</TD></TR><TR><TD>매출액</TD><TD>300,870,903</TD></TR>
 <TR><TD>기본주당이익 (단위 : 원)</TD><TD>4,950</TD></TR></TABLE></SECTION-1>""".encode(), "t")
     assert parse_unit(doc.tables[0].unit_text) == 10**6
+
+
+def test_unclosed_tr_keeps_previous_row():
+    # 리뷰: </TR> 없이 다음 <TR>이 열리면 앞 행을 버리던 문제
+    doc = read_xml(b"<TABLE><TR><TD>a</TD><TD>1</TD><TR><TD>b</TD><TD>2</TD></TABLE>", "t")
+    assert doc.tables[0].grid() == [["a", "1"], ["b", "2"]]

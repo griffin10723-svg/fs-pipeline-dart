@@ -1,6 +1,7 @@
 """계정 매핑: 금액 짝짓기가 모호하면 자동으로 짝짓지 않고, 대조는 한 해 빼기로 한다 (D-014)."""
 
 import pandas as pd
+import pytest
 
 from fs_pipeline_dart import mapping as m
 from fs_pipeline_dart.validate import NO_ID
@@ -124,3 +125,23 @@ def test_manual_mapping_only_when_approved(tmp_path):
     out = m._signed(m._assign(_doc(2015, [("Ⅰ. 순이자이익", 6 * M), ("Ⅱ. 순수수료이익", 1 * M)], sj="CIS"),
                               _dict([]), "IS", man))
     assert out[["account_id", "method"]].values.tolist() == [["nii", "manual"], [NO_ID, "none"]]
+
+
+def test_tolerance_ignores_per_share_rows():
+    # 리뷰: 주당이익(원) 행이 최대공약수를 1원으로 떨어뜨려 백만원 반올림 차이를 불일치로 보던 문제
+    doc = _doc(2024, [("매출액", 300_000 * M), ("기본주당이익", 4396)], sj="IS")
+    assert m._tol(doc) == M
+
+
+def test_bridge_does_not_override_manual(monkeypatch):
+    man = pd.DataFrame([{"corp_code": "C", "kind": "IS", "name": "이자비용", "account_id": "int_exp", "flip": True}])
+    monkeypatch.setattr(m, "manual_dictionary", lambda path=None: man)
+    ref = pd.DataFrame({"account_id": ["other", "int_exp"], "amount": [-7 * M, 9 * M]}).astype({"amount": "Int64"})
+    out = m.bridge(_doc(2021, [("이자비용", -7 * M), ("기타", 9 * M)], sj="CIS"), ref, _dict([]), "IS")
+    # 승인 행은 그대로, 다른 행이 금액으로 승인 ID를 가져가지도 않는다
+    assert out[["account_id", "method"]].values.tolist() == [["int_exp", "manual"], [NO_ID, "none"]]
+
+
+def test_chain_back_needs_contiguous_years():
+    with pytest.raises(ValueError, match="이어져야"):
+        m.chain_back("C", 2023, [2015, 2016], pd.DataFrame(), {}, {})

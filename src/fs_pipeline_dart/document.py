@@ -9,11 +9,13 @@ from pathlib import Path
 
 import pandas as pd
 
+from docparse.dart_xml import xml_members
 from fs_pipeline_dart import dart
 
 log = logging.getLogger(__name__)
 
 RAW_DOC = Path("data/raw/document")
+RCEPT = re.compile(r"\d{14}")
 BODY_MARK = re.compile(rb'<DOCUMENT-NAME\s+ACODE="11011"')  # 사업보고서 본문 (감사보고서는 00760·00761)
 
 
@@ -34,6 +36,8 @@ def report_versions(corp_code: str, year: int, force: bool = False) -> list[str]
     body = r.json()
     if body["status"] != "000":
         raise RuntimeError(f"list.json {corp_code} {year}: {body['status']} {body['message']}")
+    if int(body.get("total_page", 1)) > 1:  # 한 쪽(100건)을 넘으면 앞 판을 놓친다. 넘는 회사가 생기면 쪽 넘김을 넣는다
+        raise RuntimeError(f"list.json {corp_code} {year}: 공시 {body['total_count']}건이 한 쪽을 넘는다")
     hits = sorted(
         (x["rcept_no"] for x in body["list"]
          if "사업보고서" in x["report_nm"] and f"({year}.12)" in x["report_nm"]),
@@ -46,14 +50,30 @@ def report_versions(corp_code: str, year: int, force: bool = False) -> list[str]
     return hits
 
 
-def has_body(data: bytes) -> bool:
-    """zip 안에 사업보고서 본문 xml이 있는가. [첨부정정]은 감사보고서만 담는다."""
+def body_xml(data: bytes) -> tuple[str, bytes] | None:
+    """zip 안 사업보고서 본문 xml (파일명, 바이트). 없으면 None, 둘 이상이면 예외.
+
+    [첨부정정]은 감사보고서(00760·00761)만 담는다. 머리 2,000바이트만 풀어 본문인지 본다.
+    """
     with zipfile.ZipFile(BytesIO(data)) as zf:
-        return any(BODY_MARK.search(zf.read(n)[:2000]) for n in zf.namelist() if n.lower().endswith(".xml"))
+        hits = []
+        for i in xml_members(zf):
+            with zf.open(i) as f:
+                if BODY_MARK.search(f.read(2000)):
+                    hits.append(i)
+        if len(hits) > 1:
+            raise RuntimeError(f"본문 xml이 {len(hits)}개 {[i.filename for i in hits]}")
+        return (hits[0].filename.lstrip("/"), zf.read(hits[0])) if hits else None
+
+
+def has_body(data: bytes) -> bool:
+    return body_xml(data) is not None
 
 
 def _download(rcept_no: str) -> bytes | None:
     """zip 바이트. DART가 '파일 없음'(014)을 주면 None (KB금융 2025 정정 `20260619000667`)."""
+    if not RCEPT.fullmatch(rcept_no):  # 파일 이름에 들어가므로 형식을 확인한다
+        raise ValueError(f"접수번호 형식이 아니다: {rcept_no!r}")
     path = RAW_DOC / f"{rcept_no}.zip"
     if path.exists():
         return path.read_bytes()
