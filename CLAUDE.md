@@ -27,7 +27,7 @@
 
 **현재 단계:** Stage 1 데이터 확보·검증 (2026-10-03 착수, 하루 앞당김)  ← 세션 시작 시 여기를 먼저 확인할 것. 게이트 체크리스트는 `ROADMAP.md`
 
-**병행 작업:** 비XBRL 원문 파서(D-013)는 별도 세션(Opus)에서 한다. 인계 `docs/handoff-document-parser.md`. Stage 1 게이트(표본 20건)는 그대로 남아 있다.
+**병행 작업:** 비XBRL 원문 파서(D-013)는 2026-10-07 완료(BS·IS·CF, KB금융 2015~2022). 남은 일은 Stage 1 원문 대조와 Stage 2 결정 5개 — 인계 `docs/handoff-local.md`.
 
 **레포 문서 5종:** `README.md`(소개) · `ROADMAP.md`(Stage 게이트 진행) · `ARCHITECTURE.md`(모듈·데이터 흐름) · `CHANGELOG.md`(Stage별 변경) · `DECISIONS.md`(판단 원본)
 
