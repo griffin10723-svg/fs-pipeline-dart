@@ -8,8 +8,8 @@ from fs_pipeline_dart.validate import NO_ID
 M = 1_000_000
 
 
-def _doc(year, rows, corp="C"):
-    return pd.DataFrame([{"corp_code": corp, "fiscal_year": year, "ord": i, "account_nm": n, "amount": a}
+def _doc(year, rows, corp="C", sj="BS"):
+    return pd.DataFrame([{"corp_code": corp, "fiscal_year": year, "sj_div": sj, "ord": i, "account_nm": n, "amount": a}
                          for i, (n, a) in enumerate(rows)]).astype({"amount": "Int64"})
 
 
@@ -69,6 +69,8 @@ def test_count_guard_when_same_name_count_changes():
 def test_core_fixed_by_name():
     out = m.apply(_doc(2022, [("자 산 총 계", 9 * M)]), _dict([]))
     assert out[["account_id", "method"]].values.tolist() == [["ifrs-full_Assets", "core"]]
+    out = m.apply(_doc(2022, [("XⅢ. 당기순이익", 9 * M), ("계속영업당기순이익", 9 * M)], sj="CIS"), _dict([]), "IS")
+    assert out["account_id"].tolist() == ["ifrs-full_ProfitLoss", NO_ID]
 
 
 def test_bridge_prefers_next_year_comparative_amount():
@@ -93,3 +95,32 @@ def test_same_name_twice_gets_occurrence_key():
                _xbrl(2023, [("ifrs-full_CurrentProvisions", 10 * M), ("ifrs-full_NoncurrentProvisions", 13 * M)]))
     assert p[["name", "account_id"]].values.tolist() == [
         ["충당부채", "ifrs-full_CurrentProvisions"], ["충당부채#2", "ifrs-full_NoncurrentProvisions"]]
+
+
+def test_pair_and_apply_flip_sign_to_xbrl_convention():
+    # KB금융: 원문 일반관리비 −6.9조, XBRL 6.9조. 짝은 반대 부호로 찾고 금액은 XBRL 부호로 낸다
+    p = m.pair(_doc(2024, [("Ⅵ. 일반관리비", -69 * M)], sj="CIS"), _xbrl(2024, [("sga", 69 * M)]))
+    assert p[["status", "account_id", "flip"]].values.tolist() == [["auto", "sga", True]]
+    d, _ = m.build_dictionary(p)
+    out = m.apply(_doc(2015, [("V. 일반관리비", -45 * M)], sj="CIS"), d, "IS")
+    assert out[["account_id", "amount"]].values.tolist() == [["sga", 45 * M]]
+
+
+def test_bridge_keeps_doc_prior_sign_rule():
+    # 다음 해 원문 전기 열(원문 부호 −7)이 flip=True ID를 받았으면 이번 해 −7도 같은 ID·같은 부호 규칙
+    ref = pd.DataFrame({"account_id": ["sga"], "amount": [-7 * M], "flip": [True]}).astype({"amount": "Int64"})
+    out = m.bridge(_doc(2021, [("일반관리비", -7 * M)], sj="CIS"), ref, _dict([]), "IS")
+    assert out[["account_id", "method", "amount"]].values.tolist() == [["sga", "amount", 7 * M]]
+
+
+def test_manual_mapping_only_when_approved(tmp_path):
+    f = tmp_path / "manual.csv"
+    f.write_text("corp_code,kind,name,account_id,flip,status,proposed_by,note\n"
+                 "C,IS,순이자이익,nii,False,approved,AI,\n"
+                 "C,IS,순수수료이익,fee,False,proposed,AI,\n", encoding="utf-8")
+    man = m.manual_dictionary(f)
+    out = m.apply(_doc(2015, [("Ⅰ. 순이자이익", 6 * M), ("Ⅱ. 순수수료이익", 1 * M)], sj="CIS"), _dict([]), "IS")
+    assert out["method"].tolist() == ["none", "none"]  # 저장소 파일은 아직 승인 전
+    out = m._signed(m._assign(_doc(2015, [("Ⅰ. 순이자이익", 6 * M), ("Ⅱ. 순수수료이익", 1 * M)], sj="CIS"),
+                              _dict([]), "IS", man))
+    assert out[["account_id", "method"]].values.tolist() == [["nii", "manual"], [NO_ID, "none"]]

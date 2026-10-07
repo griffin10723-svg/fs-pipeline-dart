@@ -23,7 +23,13 @@ import pandas as pd
 from fs_pipeline_dart import dart
 from fs_pipeline_dart.collect import OUT, RAW
 from fs_pipeline_dart.document import fetch_document
-from fs_pipeline_dart.statement import body_document, find_bs, norm, parse_bs
+from fs_pipeline_dart.statement import (
+    NET_INCOME,
+    body_document,
+    find_statement,
+    norm,
+    parse_statement,
+)
 from fs_pipeline_dart.validate import (
     ASSETS,
     EQUITY,
@@ -36,6 +42,20 @@ from fs_pipeline_dart.validate import (
 log = logging.getLogger(__name__)
 
 CORE = {"자산총계": ASSETS, "부채총계": LIABILITIES, "자본총계": EQUITY}
+PROFIT_LOSS = "ifrs-full_ProfitLoss"
+SJ = {"BS": ("BS",), "IS": ("IS", "CIS")}
+
+
+# 금액이 자산총계와 같아 짝짓기로는 늘 모호한 합계 행. 핵심 계정 검사에는 넣지 않는다
+FIXED_BS = CORE | {"부채와자본총계": "ifrs-full_EquityAndLiabilities", "자본과부채총계": "ifrs-full_EquityAndLiabilities"}
+MANUAL = Path(__file__).with_name("manual_mapping.csv")
+
+
+def core_id(kind: str, name: str) -> str | None:
+    """이름으로 고정하는 계정. BS는 자산·부채·자본총계(+부채와자본총계), IS는 당기순이익(손익) (D-014)."""
+    if kind == "BS":
+        return FIXED_BS.get(name)
+    return PROFIT_LOSS if NET_INCOME.match(name) else None
 REPORT_DIR = Path("outputs/mapping")
 DOC_OUT = Path("data/processed/fs_document.parquet")
 DICT_VERSION = "bs-0.1"  # 회계판단: D-005 assumptions에 남길 계정 사전 규칙 버전
@@ -43,18 +63,22 @@ DICT_VERSION = "bs-0.1"  # 회계판단: D-005 assumptions에 남길 계정 사�
 
 # ---------- XBRL 쪽 ----------
 
-def xbrl_bs(corp_code: str, year: int) -> pd.DataFrame | None:
-    """원본 JSON의 BS 표준 ID 행: account_id · thstrm · frmtrm (원). 받은 적 없으면 None."""
+def xbrl_rows(corp_code: str, year: int, kind: str = "BS") -> pd.DataFrame | None:
+    """원본 JSON의 표준 ID 행: account_id · thstrm · frmtrm (원). 받은 적 없으면 None.
+
+    IS는 IS·CIS를 함께 본다. 같은 ID가 둘에 같은 금액으로 있으면 한 행으로 친다(D-003).
+    """
     path = RAW / f"{corp_code}_{year}.json"
     if not path.exists():
         return None
     rows = [r for r in json.loads(path.read_text(encoding="utf-8"))["list"]
-            if r["sj_div"] == "BS" and r["account_id"] != NO_ID]
-    return pd.DataFrame({
+            if r["sj_div"] in SJ[kind] and r["account_id"] != NO_ID]
+    out = pd.DataFrame({
         "account_id": [r["account_id"] for r in rows],
         "thstrm": pd.array([dart.to_amount(r.get("thstrm_amount") or "") for r in rows], dtype="Int64"),
         "frmtrm": pd.array([dart.to_amount(r.get("frmtrm_amount") or "") for r in rows], dtype="Int64"),
     })
+    return out.drop_duplicates()
 
 
 def _unique_amounts(s: pd.Series) -> pd.Series:
@@ -62,11 +86,11 @@ def _unique_amounts(s: pd.Series) -> pd.Series:
     return s[~s.duplicated(keep=False)]
 
 
-def rename_map(corp_code: str, years: list[int]) -> dict[str, str]:
+def rename_map(corp_code: str, years: list[int], kind: str = "BS") -> dict[str, str]:
     """옛 ID → 최근 연도 ID. Y년 당기 금액과 Y+1년 전기 금액이 같고 Y+1년에 옛 ID가 사라졌을 때만."""
     step: dict[str, str] = {}
     for y in sorted(years)[:-1]:
-        cur, nxt = xbrl_bs(corp_code, y), xbrl_bs(corp_code, y + 1)
+        cur, nxt = xbrl_rows(corp_code, y, kind), xbrl_rows(corp_code, y + 1, kind)
         if cur is None or nxt is None:
             continue
         gone = cur[~cur["account_id"].isin(nxt["account_id"])]
@@ -108,28 +132,40 @@ def _name_counts(doc: pd.DataFrame) -> pd.Series:
     return names.groupby([doc["corp_code"], doc["fiscal_year"], names]).transform("size")
 
 
+def _hits(x: pd.DataFrame, a: int, tol: int) -> tuple[list[str], bool]:
+    """금액 a와 같은 XBRL ID들. 같은 부호로 없으면 반대 부호로 찾고 flip=True.
+
+    원문은 비용을 음수로, XBRL은 양수로 적기도 한다(KB금융 일반관리비 −4.5조 ↔ 4.5조).
+    """
+    amt = x["amount"].astype("int64")
+    ids = sorted(set(x.loc[(amt - a).abs() <= tol, "account_id"]))
+    if ids or a == 0:
+        return ids, False
+    return sorted(set(x.loc[(amt + a).abs() <= tol, "account_id"])), True
+
+
 def pair(doc: pd.DataFrame, xbrl: pd.DataFrame) -> pd.DataFrame:
-    """한 공시의 원문 행마다 짝 상태. status: auto · dup_doc · dup_xbrl · none · no_amount."""
+    """한 공시의 원문 행마다 짝 상태. status: auto · dup_doc · dup_xbrl · none · no_amount. flip = 부호 반대."""
     tol = display_unit(doc["amount"])
     x = xbrl[(xbrl["account_id"] != NO_ID) & xbrl["amount"].notna()]
     amounts = doc["amount"].dropna().astype("int64")
     out = []
     for r, key, cnt in zip(doc.itertuples(index=False), name_keys(doc), _name_counts(doc)):
         rec = {"corp_code": r.corp_code, "fiscal_year": r.fiscal_year, "ord": r.ord, "account_nm": r.account_nm,
-               "name": key, "count": int(cnt), "amount": r.amount, "account_id": None, "candidates": ""}
+               "name": key, "count": int(cnt), "amount": r.amount, "account_id": None, "flip": False,
+               "candidates": ""}
         if pd.isna(r.amount):
             out.append(rec | {"status": "no_amount"})
             continue
         a = int(r.amount)
-        hit = x[(x["amount"].astype("int64") - a).abs() <= tol]
-        ids = sorted(set(hit["account_id"]))
+        ids, flip = _hits(x, a, tol)
         rec["candidates"] = ";".join(ids)
-        if ((amounts - a).abs() <= tol).sum() > 1:
+        if ((amounts.abs() - abs(a)).abs() <= tol).sum() > 1:
             status = "dup_doc"
         elif len(ids) > 1:
             status = "dup_xbrl"
         elif len(ids) == 1:
-            status, rec["account_id"] = "auto", ids[0]
+            status, rec["account_id"], rec["flip"] = "auto", ids[0], flip
         else:
             status = "none"
         out.append(rec | {"status": status})
@@ -139,91 +175,127 @@ def pair(doc: pd.DataFrame, xbrl: pd.DataFrame) -> pd.DataFrame:
 def build_dictionary(pairs: pd.DataFrame, rmap: dict[str, str] | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
     """자동 짝에서 회사별 사전과 충돌 기록. 같은 이름의 ID가 해마다 다르면 최근 연도 ID를 쓴다 (D-005 부분).
 
-    사전 칸: corp_code · name · account_id · year(ID를 가져온 해) · count(그해 같은 이름 개수) · years.
-    충돌 칸: 최근 연도 ID로 바꿔 읽은 뒤에도 해마다 ID가 다른 이름. 정보용이다.
+    사전 칸: corp_code · name · account_id · flip · year(ID를 가져온 해) · count(그해 같은 이름 개수) · years.
+    부호(flip)도 최근 연도를 따른다. 충돌 칸: 최근 연도 ID로 바꿔 읽은 뒤에도 해마다 ID가 다른 이름. 정보용이다.
     """
-    cols = ["corp_code", "name", "account_id", "year", "count", "years"]
+    cols = ["corp_code", "name", "account_id", "flip", "year", "count", "years"]
     auto = pairs[pairs["status"] == "auto"]
     if auto.empty:
         return pd.DataFrame(columns=cols), pd.DataFrame(columns=["corp_code", "name", "account_ids"])
     auto = auto.assign(account_id=_tr(auto["account_id"], rmap or {}))
+    if "flip" not in auto:
+        auto = auto.assign(flip=False)
     latest = auto.sort_values("fiscal_year").groupby(["corp_code", "name"]).tail(1)
     years = auto.groupby(["corp_code", "name"])["fiscal_year"].agg(lambda s: ",".join(map(str, sorted(set(s)))))
-    d = latest.rename(columns={"fiscal_year": "year"})[["corp_code", "name", "account_id", "year", "count"]]
+    d = latest.rename(columns={"fiscal_year": "year"})[["corp_code", "name", "account_id", "flip", "year", "count"]]
     d = d.merge(years.rename("years").reset_index(), on=["corp_code", "name"], how="left", validate="one_to_one")
     ids = auto.groupby(["corp_code", "name"])["account_id"].agg(lambda s: sorted(set(s)))
     c = ids[ids.map(len) > 1].map(";".join).rename("account_ids").reset_index()
     return d[cols].reset_index(drop=True), c
 
 
-def apply(doc: pd.DataFrame, dictionary: pd.DataFrame) -> pd.DataFrame:
-    """이름 사전으로 ID를 붙인다. method: core · name · count_guard · name_dup · none.
+def manual_dictionary(path: Path = MANUAL) -> pd.DataFrame:
+    """작업자가 승인한(status=approved) 수작업 매핑만. 회계판단: D-014 수작업 항목은 작업자 승인."""
+    cols = ["corp_code", "kind", "name", "account_id", "flip"]
+    if not path.exists():
+        return pd.DataFrame(columns=cols)
+    m = pd.read_csv(path, dtype={"corp_code": str}, encoding="utf-8")
+    return m[m["status"] == "approved"][cols].astype({"flip": bool})
 
-    - 핵심 3계정은 이름으로 고정(자산총계는 '부채와자본총계'와 금액이 같아 짝짓기로는 늘 모호하다).
-    - 같은 이름 개수가 사전을 만든 해와 다르면 순번 키를 믿지 않고 ID를 붙이지 않는다(count_guard).
-    - 이름 사전으로 한 공시의 두 행이 같은 ID를 받으면 둘 다 떼고(name_dup) 경고를 남긴다.
+
+def _assign(doc: pd.DataFrame, dictionary: pd.DataFrame, kind: str,
+            manual: pd.DataFrame | None = None) -> pd.DataFrame:
+    """ID·부호를 정한다(금액은 아직 원문 부호). method: core · manual · name · count_guard · name_dup · none.
+
+    순서: 이름 고정 계정 → 승인된 수작업 매핑 → 자동 사전.
     """
     m = dictionary.set_index(["corp_code", "name"])
-    ids, methods = [], []
-    for c, key, base, cnt in zip(doc["corp_code"], name_keys(doc), doc["account_nm"].map(norm), _name_counts(doc)):
-        if key in CORE:
-            ids.append(CORE[key])
-            methods.append("core")
+    man = manual_dictionary() if manual is None else manual
+    man = man[man["kind"] == kind].set_index(["corp_code", "name"])
+    ids, methods, flips = [], [], []
+    for c, key, cnt in zip(doc["corp_code"], name_keys(doc), _name_counts(doc)):
+        flip = False
+        if aid := core_id(kind, key):
+            method = "core"
+        elif (c, key) in man.index:
+            row = man.loc[(c, key)]
+            aid, method, flip = row["account_id"], "manual", bool(row["flip"])
         elif (c, key) in m.index:
             row = m.loc[(c, key)]
             if (cnt > 1 or row["count"] > 1) and cnt != row["count"]:
                 log.warning("%s %s: 같은 이름 %d개(사전 %s년 %d개), ID를 붙이지 않는다", c, key, cnt, row["year"], row["count"])
-                ids.append(NO_ID)
-                methods.append("count_guard")
+                aid, method = NO_ID, "count_guard"
             else:
-                ids.append(row["account_id"])
-                methods.append("name")
+                aid, method, flip = row["account_id"], "name", bool(row.get("flip", False))
         else:
-            ids.append(NO_ID)
-            methods.append("none")
-    out = doc.assign(account_id=ids, method=methods)
+            aid, method = NO_ID, "none"
+        ids.append(aid)
+        methods.append(method)
+        flips.append(flip)
+    out = doc.assign(account_id=ids, method=methods, flip=flips)
     # 해마다 이름 뜻이 바뀌면(카카오 '파생상품자산') 최근 연도 ID로 두 이름이 한 ID에 모인다. 어느 쪽도 믿지 않는다
     named = out["method"] == "name"
-    dup = named & out.duplicated(["corp_code", "fiscal_year", "account_id"], keep=False) & (out["account_id"] != NO_ID)
+    dup = named & out.duplicated(["corp_code", "fiscal_year", "sj_div", "account_id"], keep=False) & (out["account_id"] != NO_ID)
     for r in out[dup].itertuples():
         log.warning("%s %s %s: 이름 사전 ID %s가 겹쳐 붙이지 않는다", r.corp_code, r.fiscal_year, r.account_nm, r.account_id)
-    out.loc[dup, ["account_id", "method"]] = [NO_ID, "name_dup"]
-    _check_dup_ids(out)
+    out.loc[dup, ["account_id", "method", "flip"]] = [NO_ID, "name_dup", False]
     return out
+
+
+def _signed(out: pd.DataFrame) -> pd.DataFrame:
+    """ID가 붙은 행의 금액을 XBRL 부호로 바꾼다. 회계판단: D-005 부분(최근 연도 규칙)."""
+    _check_dup_ids(out)
+    amt = out["amount"].where(~out["flip"].astype(bool), -out["amount"])
+    return out.assign(amount=amt)
+
+
+def apply(doc: pd.DataFrame, dictionary: pd.DataFrame, kind: str = "BS") -> pd.DataFrame:
+    """이름 사전으로 ID를 붙이고 금액을 XBRL 부호로 바꾼다.
+
+    - 핵심 계정은 이름으로 고정(자산총계는 '부채와자본총계'와 금액이 같아 짝짓기로는 늘 모호하다).
+    - 같은 이름 개수가 사전을 만든 해와 다르면 순번 키를 믿지 않고 ID를 붙이지 않는다(count_guard).
+    - 이름 사전으로 한 공시의 두 행이 같은 ID를 받으면 둘 다 떼고(name_dup) 경고를 남긴다.
+    """
+    return _signed(_assign(doc, dictionary, kind))
 
 
 def _check_dup_ids(df: pd.DataFrame) -> None:
     used = df[df["account_id"] != NO_ID]
-    dup = used[used.duplicated(["corp_code", "fiscal_year", "account_id"], keep=False)]
+    dup = used[used.duplicated(["corp_code", "fiscal_year", "sj_div", "account_id"], keep=False)]
     if len(dup):
         raise ValueError(f"한 공시에서 같은 ID가 여러 행: {dup[['fiscal_year', 'account_nm', 'account_id']].values.tolist()}")
 
 
-def bridge(doc: pd.DataFrame, ref: pd.DataFrame, dictionary: pd.DataFrame) -> pd.DataFrame:
-    """다음 해 보고서의 전기 값(ref: account_id · amount)과 금액으로 먼저 잇고, 나머지는 이름 사전.
+def bridge(doc: pd.DataFrame, ref: pd.DataFrame, dictionary: pd.DataFrame, kind: str = "BS") -> pd.DataFrame:
+    """다음 해 보고서의 전기 값(ref: account_id · amount · flip)과 금액으로 먼저 잇고, 나머지는 이름 사전.
 
-    금액 짝은 양쪽 모두 그 금액이 하나뿐일 때만 쓴다. method에 'amount'가 더해진다.
+    ref.flip: ref 금액이 원문 부호면 그 행의 부호 규칙, XBRL 부호면 False.
+    금액 짝은 양쪽 모두 그 금액이 하나뿐일 때만 쓴다. 반대 부호로만 맞으면 flip을 뒤집는다.
     """
     tol = display_unit(doc["amount"])
-    out = apply(doc, dictionary)
+    out = _assign(doc, dictionary, kind)
     ref = ref.dropna(subset=["amount"])
-    ref = ref[~ref["amount"].duplicated(keep=False)]
-    doc_amt = doc["amount"].dropna().astype("int64")
+    if "flip" not in ref:
+        ref = ref.assign(flip=False)
+    ref = ref[~ref["amount"].abs().duplicated(keep=False)]
+    doc_amt = doc["amount"].dropna().astype("int64").abs()
+    ref_amt = ref["amount"].astype("int64")
     for i, r in out.iterrows():
         if out.at[i, "method"] == "core" or pd.isna(r["amount"]):
             continue
         a = int(r["amount"])
-        if ((doc_amt - a).abs() <= tol).sum() != 1:
+        if ((doc_amt - abs(a)).abs() <= tol).sum() != 1:
             continue
-        hit = ref[(ref["amount"].astype("int64") - a).abs() <= tol]
+        same, opp = ref[(ref_amt - a).abs() <= tol], ref[(ref_amt + a).abs() <= tol]
+        hit, toggled = (same, False) if len(same) else (opp, True)
         if len(hit) == 1:
             out.at[i, "account_id"], out.at[i, "method"] = hit["account_id"].iloc[0], "amount"
+            out.at[i, "flip"] = bool(hit["flip"].iloc[0]) != toggled
     # 금액 짝이 이름 사전과 같은 ID를 다른 행에 주면, 금액 짝을 믿고 이름 쪽을 뗀다
     taken = set(out.loc[out["method"] == "amount", "account_id"])
     clash = (out["method"] == "name") & out["account_id"].isin(taken)
-    out.loc[clash, ["account_id", "method"]] = [NO_ID, "name_clash"]
-    _check_dup_ids(out)
-    return out
+    out.loc[clash, ["account_id", "method", "flip"]] = [NO_ID, "name_clash", False]
+    return _signed(out)
 
 
 # ---------- 대조 ----------
@@ -231,7 +303,8 @@ def bridge(doc: pd.DataFrame, ref: pd.DataFrame, dictionary: pd.DataFrame) -> pd
 def compare(mapped: pd.DataFrame, xbrl: pd.DataFrame) -> pd.DataFrame:
     """ID가 붙은 원문 행을 같은 공시 XBRL과 비교. result: match · mismatch · missing_in_xbrl."""
     tol = display_unit(mapped["amount"])
-    x = xbrl[xbrl["account_id"] != NO_ID].set_index("account_id")["amount"]
+    x = xbrl[xbrl["account_id"] != NO_ID].drop_duplicates(["account_id", "amount"])
+    x = x[~x["account_id"].duplicated(keep=False)].set_index("account_id")["amount"]  # IS·CIS 값이 다르면 대조에서 뺀다
     rows = []
     for r in mapped[mapped["account_id"] != NO_ID].itertuples(index=False):
         if r.account_id not in x.index:
@@ -248,42 +321,43 @@ def compare(mapped: pd.DataFrame, xbrl: pd.DataFrame) -> pd.DataFrame:
                                        "xbrl", "result"])
 
 
-def core_missing(mapped: pd.DataFrame) -> list[str]:
-    """핵심 계정(자산·부채·자본총계)이 ID를 못 받은 공시. D-014: 비면 예외 대상."""
+def core_missing(mapped: pd.DataFrame, kind: str = "BS") -> list[str]:
+    """핵심 계정이 ID를 못 받은 공시. D-014: 비면 예외 대상."""
+    need = CORE if kind == "BS" else {"당기순이익": PROFIT_LOSS}
     errs = []
     for (c, y), g in mapped.groupby(["corp_code", "fiscal_year"]):
-        for name, aid in CORE.items():
+        for name, aid in need.items():
             if aid not in set(g["account_id"]):
                 errs.append(f"{c} {y} {name}")
     return errs
 
 
-def _summary(c, y, doc, mapped, cmp=None) -> dict:
-    out = {"corp_code": c, "fiscal_year": y, "rows_with_amount": int(doc["amount"].notna().sum()),
+def _summary(c, y, doc, mapped, cmp=None, kind="BS") -> dict:
+    out = {"kind": kind, "corp_code": c, "fiscal_year": y, "rows_with_amount": int(doc["amount"].notna().sum()),
            "mapped": int((mapped["account_id"] != NO_ID).sum())}
     out |= {f"by_{k}": int(v) for k, v in mapped["method"].value_counts().items()}
     if cmp is not None:
         out |= {"match": int((cmp["result"] == "match").sum()), "mismatch": int((cmp["result"] != "match").sum())}
-    out["core_missing"] = ",".join(core_missing(mapped))
+    out["core_missing"] = ",".join(core_missing(mapped, kind))
     return out
 
 
 def holdout(docs: pd.DataFrame, pairs: pd.DataFrame, xbrl: pd.DataFrame,
-            rmaps: dict[str, dict[str, str]]) -> tuple[pd.DataFrame, pd.DataFrame]:
+            rmaps: dict[str, dict[str, str]], kind: str = "BS") -> tuple[pd.DataFrame, pd.DataFrame]:
     """XBRL 있는 해를 하나씩 빼고, XBRL 없는 해와 같은 방법(다음 해 전기 열 + 나머지 해 사전)으로 ID를 붙여 대조한다."""
     results, details = [], []
     for (c, y), doc in docs.groupby(["corp_code", "fiscal_year"]):
         rmap = rmaps.get(c, {})
         d, _ = build_dictionary(pairs[(pairs["corp_code"] == c) & (pairs["fiscal_year"] != y)], rmap)
-        nxt = xbrl_bs(c, y + 1)
+        nxt = xbrl_rows(c, y + 1, kind)
         if nxt is not None:
             ref = pd.DataFrame({"account_id": _tr(nxt["account_id"], rmap), "amount": nxt["frmtrm"]})
-            mapped = bridge(doc, ref, d)
+            mapped = bridge(doc, ref, d, kind)
         else:
-            mapped = apply(doc, d)
+            mapped = apply(doc, d, kind)
         x = xbrl[(xbrl["corp_code"] == c) & (xbrl["fiscal_year"] == y)]
         cmp = compare(mapped, x.assign(account_id=_tr(x["account_id"], rmap)))
-        results.append(_summary(c, y, doc, mapped, cmp))
+        results.append(_summary(c, y, doc, mapped, cmp, kind))
         details.append(cmp)
     return pd.DataFrame(results).fillna(0), pd.concat(details, ignore_index=True)
 
@@ -291,7 +365,8 @@ def holdout(docs: pd.DataFrame, pairs: pd.DataFrame, xbrl: pd.DataFrame,
 # ---------- XBRL 없는 해 ----------
 
 def chain_back(corp_code: str, first_xbrl_year: int, years: list[int], pairs: pd.DataFrame,
-               rmap: dict[str, str], docs: dict[int, tuple[str, bytes]]) -> tuple[pd.DataFrame, pd.DataFrame]:
+               rmap: dict[str, str], docs: dict[int, tuple[str, bytes]],
+               kind: str = "BS") -> tuple[pd.DataFrame, pd.DataFrame]:
     """XBRL 첫해 바로 앞부터 거꾸로. 각 해의 기준(ref)은 다음 해 보고서의 전기 값이다.
 
     다음 해가 XBRL이면 그 frmtrm, 아니면 다음 해 원문 전기 열(같은 표·같은 행 순서라 당기 행의 ID를 그대로 받는다).
@@ -304,76 +379,85 @@ def chain_back(corp_code: str, first_xbrl_year: int, years: list[int], pairs: pd
         if y >= first_xbrl_year:
             continue
         rcept, data = docs[y]
-        t = find_bs(body_document(data, rcept))
-        doc = parse_bs(t, corp_code, y, rcept)
+        t = find_statement(body_document(data, rcept), kind)
+        doc = parse_statement(t, kind, corp_code, y, rcept)
         if y + 1 == first_xbrl_year:
-            nxt = xbrl_bs(corp_code, y + 1)
+            nxt = xbrl_rows(corp_code, y + 1, kind)
             ref = pd.DataFrame({"account_id": _tr(nxt["account_id"], rmap), "amount": nxt["frmtrm"]})
         else:
-            ref = prev_prior.merge(prev_mapped[["ord", "account_id"]], on="ord", how="left", validate="one_to_one")
-            ref = ref.loc[ref["account_id_y"] != NO_ID, ["account_id_y", "amount"]].rename(
+            # 다음 해 원문 전기 열(원문 부호) + 그 해 당기 행이 받은 ID·부호 규칙(같은 표·같은 행 순서)
+            ref = prev_prior.merge(prev_mapped[["ord", "account_id", "flip"]], on="ord", how="left", validate="one_to_one")
+            ref = ref.loc[ref["account_id_y"] != NO_ID, ["account_id_y", "amount", "flip"]].rename(
                 columns={"account_id_y": "account_id"})
         d, _ = build_dictionary(pool, rmap)
-        mapped = bridge(doc, ref, d)
-        summary.append(_summary(corp_code, y, doc, mapped))
+        mapped = bridge(doc, ref, d, kind)
+        summary.append(_summary(corp_code, y, doc, mapped, kind=kind))
         out.append(mapped)
         # 이 해 결과를 사전 풀에 더한다(금액 짝·이름 모두). 더 최근 해의 ID가 있으면 build_dictionary가 최근을 고른다
-        learned = mapped[mapped["account_id"] != NO_ID]
-        pool = pd.concat([pool, pd.DataFrame({
-            "corp_code": corp_code, "fiscal_year": y, "name": name_keys(learned).values,
-            "count": _name_counts(learned).values, "account_id": learned["account_id"].values, "status": "auto"})],
-            ignore_index=True)
+        # 이름 키·개수는 표 전체에서 센다(ID 붙은 행만 세면 같은 이름 개수가 달라진다)
+        keyed = mapped.assign(name=name_keys(mapped).values, count=_name_counts(mapped).values)
+        learned = keyed[keyed["account_id"] != NO_ID]
+        pool = pd.concat([pool, learned[["corp_code", "fiscal_year", "name", "count", "account_id", "flip"]].assign(
+            status="auto")], ignore_index=True)
         prev_mapped = mapped
-        prev_prior = parse_bs(t, corp_code, y - 1, rcept, period=1) if y - 1 in years else None
+        prev_prior = parse_statement(t, kind, corp_code, y - 1, rcept, period=1) if y - 1 in years else None
     return (pd.concat(out, ignore_index=True) if out else pd.DataFrame()), pd.DataFrame(summary).fillna(0)
 
 
 # ---------- 실행 ----------
 
-def run(corps: list[str], xbrl_years: list[int], back: dict[str, list[int]]) -> dict[str, pd.DataFrame]:
+def run(corps: list[str], xbrl_years: list[int], back: dict[str, list[int]],
+        kinds: tuple[str, ...] = ("BS", "IS")) -> dict[str, pd.DataFrame]:
     fs = pd.read_parquet(OUT)
-    xbrl = fs[fs["sj_div"] == "BS"]
-    docs, pairs, rmaps = [], [], {}
-    for c in corps:
-        rmaps[c] = rename_map(c, sorted(xbrl.loc[xbrl["corp_code"] == c, "fiscal_year"].unique()))
-        for y in xbrl_years:
-            x = xbrl[(xbrl["corp_code"] == c) & (xbrl["fiscal_year"] == y)]
-            if x.empty:
-                log.warning("XBRL 없음, 건너뜀 %s %s", c, y)
-                continue
+    got: dict[tuple[str, int], tuple[str, bytes] | None] = {}
+
+    def doc_of(c: str, y: int) -> tuple[str, bytes] | None:
+        if (c, y) not in got:
             try:
-                rcept, data = fetch_document(c, y)
+                got[(c, y)] = fetch_document(c, y)
             except Exception as e:  # DART 시간 초과 등. 그 공시만 빼고 계속한다
                 log.error("원문 못 받음 %s %s: %s", c, y, e)
-                continue
-            if rcept != x["rcept_no"].iloc[0]:
-                log.warning("%s %s 원문 판 %s != XBRL 판 %s", c, y, rcept, x["rcept_no"].iloc[0])
-            doc = parse_bs(find_bs(body_document(data, rcept)), c, y, rcept)
-            docs.append(doc)
-            pairs.append(pair(doc, x))
-    docs, pairs = pd.concat(docs, ignore_index=True), pd.concat(pairs, ignore_index=True)
-    dictionary = pd.concat([build_dictionary(pairs[pairs["corp_code"] == c], rmaps[c])[0] for c in corps])
-    conflicts = pd.concat([build_dictionary(pairs[pairs["corp_code"] == c], rmaps[c])[1] for c in corps])
-    h, hd = holdout(docs, pairs, xbrl, rmaps)
-    back_rows, back_sum = [], []
-    for c, years in back.items():
-        first = int(xbrl.loc[xbrl["corp_code"] == c, "fiscal_year"].min())
-        got = {y: fetch_document(c, y) for y in years}
-        rows, s = chain_back(c, first, years, pairs, rmaps[c], got)
-        back_rows.append(rows)
-        back_sum.append(s)
-    renames = pd.DataFrame([(c, o, n) for c, m in rmaps.items() for o, n in m.items()],
-                           columns=["corp_code", "old_id", "latest_id"])
-    out = {"pairs": pairs, "dictionary": dictionary, "conflicts": conflicts, "renames": renames,
-           "holdout": h, "holdout_detail": hd}
-    if back_rows:
-        out |= {"back": pd.concat(back_sum, ignore_index=True), "back_rows": pd.concat(back_rows, ignore_index=True)}
-    return out
+                got[(c, y)] = None
+        return got[(c, y)]
+
+    res: dict[str, list[pd.DataFrame]] = {}
+    for kind in kinds:
+        xbrl = fs[fs["sj_div"].isin(SJ[kind])]
+        docs, pairs, rmaps = [], [], {}
+        for c in corps:
+            rmaps[c] = rename_map(c, sorted(xbrl.loc[xbrl["corp_code"] == c, "fiscal_year"].unique()), kind)
+            for y in xbrl_years:
+                x = xbrl[(xbrl["corp_code"] == c) & (xbrl["fiscal_year"] == y)]
+                if x.empty or (d := doc_of(c, y)) is None:
+                    continue
+                rcept, data = d
+                if rcept != x["rcept_no"].iloc[0]:
+                    log.warning("%s %s 원문 판 %s != XBRL 판 %s", c, y, rcept, x["rcept_no"].iloc[0])
+                doc = parse_statement(find_statement(body_document(data, rcept), kind), kind, c, y, rcept)
+                docs.append(doc)
+                pairs.append(pair(doc, x))
+        docs, pairs = pd.concat(docs, ignore_index=True), pd.concat(pairs, ignore_index=True)
+        built = [build_dictionary(pairs[pairs["corp_code"] == c], rmaps[c]) for c in corps]
+        h, hd = holdout(docs, pairs, xbrl, rmaps, kind)
+        part = {
+            "pairs": pairs, "dictionary": pd.concat([b[0] for b in built]),
+            "conflicts": pd.concat([b[1] for b in built]),
+            "renames": pd.DataFrame([(c, o, n) for c, m in rmaps.items() for o, n in m.items()],
+                                    columns=["corp_code", "old_id", "latest_id"]),
+            "holdout": h, "holdout_detail": hd,
+        }
+        for c, years in back.items():
+            first = int(xbrl.loc[xbrl["corp_code"] == c, "fiscal_year"].min())
+            rows, summ = chain_back(c, first, years, pairs, rmaps[c], {y: doc_of(c, y) for y in years}, kind)
+            part |= {"back": summ, "back_rows": rows}
+        for name, df in part.items():
+            res.setdefault(name, []).append(df.assign(kind=kind) if "kind" not in df else df)
+    return {name: pd.concat(dfs, ignore_index=True) for name, dfs in res.items()}
 
 
 def save_document_rows(rows: pd.DataFrame) -> pd.DataFrame:
     """XBRL 없는 해의 원문 행을 D-011 스키마로 저장한다. 불변식 검사를 통과해야 쓴다."""
-    out = rows.drop(columns=["method"])
+    out = rows.drop(columns=["method", "kind", "flip"], errors="ignore")
     validate(out)
     DOC_OUT.parent.mkdir(parents=True, exist_ok=True)
     out.to_parquet(DOC_OUT, index=False)
