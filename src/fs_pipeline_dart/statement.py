@@ -17,10 +17,13 @@ from fs_pipeline_dart.document import BODY_MARK
 from fs_pipeline_dart.validate import NO_ID
 
 TOTALS = ("자산총계", "부채총계", "자본총계")
+# 당기순이익·당기순손실·당기순손익·연결당기순이익(손실). '계속영업당기순이익'·'지배기업…귀속'은 아니다
+NET_INCOME = re.compile(r"^(연결)?당기순(이익|손실|손익)(\(손실\))?$")
+_UNIT_IN_LABEL = re.compile(r"\(\s*단\s*위\s*[:：]?[^)]*\)")
 _PERIOD = re.compile(r"제\s*(\d+)")
 _NOTE = re.compile(r"\(\s*주(석)?[\s\d,.\-~및]*\)$")  # 끝의 '(주석4,6)' '(주29)'
 _KO = "가나다라마바사아자차카타파하"  # 번호로 쓰는 글자만. [가-하]는 거의 모든 음절이라 '자산총계'의 '자'를 먹는다
-_NUMBERING = re.compile(rf"^(?:(?:[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩⅪⅫ]+|[IVXL]+|\d+|[{_KO}])\.|\((?:\d+|[{_KO}])\))")
+_NUMBERING = re.compile(rf"^(?:(?:[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩⅪⅫIVXL]+|\d+|[{_KO}])\.|\((?:\d+|[{_KO}])\))")
 
 COLUMNS = ["corp_code", "fiscal_year", "sj_div", "account_id", "ord", "account_nm", "account_detail",
            "amount", "currency", "rcept_no", "reprt_code", "source"]
@@ -50,20 +53,45 @@ def _labels(t: Table) -> set[str]:
     return {norm(r[0].text) for r in t.rows if r}
 
 
-def find_bs(doc: Document) -> Table:
-    """연결 재무상태표 1개. 아니면 예외.
+def _in_section(t: Table) -> bool:
+    """섹션 경로에 '연결재무제표' 또는 '연결 ○○표/계산서'(주석 제외)."""
+    for x in t.section:
+        s = re.sub(r"\s+", "", x)
+        if "주석" not in s and ("연결재무제표" in s or "연결재무상태표" in s or ("연결" in s and "계산서" in s)):
+            return True
+    return False
 
-    섹션 경로에 '연결재무제표' 또는 '연결재무상태표'가 있고(주석 제외) 자산·부채·자본총계 행을 모두 가진 표.
-    섹션 제목만으로는 같은 섹션의 머리 표·단위 표·손익 표가 함께 남아 총계 행을 둘째 조건으로 둔다.
+
+def _has_income_rows(labels: set[str]) -> bool:
+    op = any("영업이익" in x or "영업손익" in x for x in labels)
+    net = any("당기순이익" in x or "당기순손익" in x for x in labels)
+    return op and net
+
+
+def find_statement(doc: Document, kind: str) -> Table:
+    """연결 재무상태표(BS) 또는 손익(IS) 표 1개. 아니면 예외 (D-014 변경 2026-10-07).
+
+    섹션 제목만으로는 같은 섹션의 머리 표·단위 표·다른 재무제표가 함께 남아 내용 조건을 둔다.
+    - BS: 자산·부채·자본총계 행을 모두 가진 표
+    - IS: 영업이익(손익)·당기순이익(손익) 행을 모두 가진 표. 손익과 포괄손익을 따로 내면 손익계산서만 잡힌다
+    문단 소제목은 쓰지 않는다. KB금융 2015·2018은 손익 표 앞 문단이 '가. 연결대차대조표'다.
     """
-    def in_section(t: Table) -> bool:
-        return any(("연결재무제표" in (s := re.sub(r"\s+", "", x)) or "연결재무상태표" in s) and "주석" not in s
-                   for x in t.section)
-
-    cands = [t for t in doc.tables if in_section(t) and set(TOTALS) <= _labels(t)]
+    if kind == "BS":
+        def ok(t):
+            return set(TOTALS) <= _labels(t)
+    elif kind == "IS":
+        def ok(t):
+            return _has_income_rows(_labels(t))
+    else:
+        raise ValueError(kind)
+    cands = [t for t in doc.tables if _in_section(t) and ok(t)]
     if len(cands) != 1:
-        raise StatementError(f"{doc.source}: 연결 재무상태표 후보 {len(cands)}개 {[t.index for t in cands]}")
+        raise StatementError(f"{doc.source}: 연결 {kind} 후보 {len(cands)}개 {[t.index for t in cands]}")
     return cands[0]
+
+
+def find_bs(doc: Document) -> Table:
+    return find_statement(doc, "BS")
 
 
 def current_columns(header: list[str], period: int = 0) -> list[int]:
@@ -78,16 +106,21 @@ def current_columns(header: list[str], period: int = 0) -> list[int]:
     return [i for i, n in nums.items() if n == ranks[period]]
 
 
-def parse_bs(t: Table, corp_code: str, year: int, rcept_no: str, period: int = 0) -> pd.DataFrame:
-    """재무상태표 표 → D-011 행. 한 행에 그 기간 값이 두 칸 다 차 있으면 예외.
+def parse_statement(t: Table, kind: str, corp_code: str, year: int, rcept_no: str, period: int = 0) -> pd.DataFrame:
+    """재무제표 표 → D-011 행. 한 행에 그 기간 값이 두 칸 다 차 있으면 예외.
 
     로더는 당기(period=0)만 낸다. 전기(period=1)는 다음 해 보고서와 잇는 내부 대조용이다 (D-014).
+    손익 표에 총포괄 행이 있으면 단일 포괄손익계산서로 보고 sj_div를 CIS로 둔다(XBRL과 같은 구분).
     """
     if t.unit_text is None:
         raise StatementError(f"표 {t.index}: 단위 표기가 없다")
     unit = parse_unit(t.unit_text)
     grid = t.grid()
     cols = current_columns(grid[0], period)
+    if kind == "BS":
+        sj = "BS"
+    else:
+        sj = "CIS" if any("총포괄" in x for x in _labels(t)) else "IS"
     rows = []
     for ord_, r in enumerate(grid[1:], start=1):
         vals = [r[c] for c in cols if r[c].strip() not in ("",)]
@@ -96,14 +129,39 @@ def parse_bs(t: Table, corp_code: str, year: int, rcept_no: str, period: int = 0
         if len(vals) > 1:
             raise StatementError(f"표 {t.index} {r[0]!r}: 당기 값이 {vals}")
         rows.append({
-            "corp_code": corp_code, "fiscal_year": year, "sj_div": "BS", "account_id": NO_ID,
+            "corp_code": corp_code, "fiscal_year": year, "sj_div": sj, "account_id": NO_ID,
             "ord": ord_, "account_nm": r[0].strip(), "account_detail": "-",
-            "amount": to_won(vals[0], unit) if vals else None,
+            "amount": (_per_share(vals[0], r[0]) if "주당" in r[0] else to_won(vals[0], unit)) if vals else None,
             "currency": "KRW", "rcept_no": rcept_no, "reprt_code": ANNUAL, "source": "document",
         })
     out = pd.DataFrame(rows, columns=COLUMNS).astype({"amount": "Int64", "ord": int, "fiscal_year": int})
-    check_bs(out, unit)
+    check_bs(out, unit) if kind == "BS" else check_is(out)
     return out
+
+
+def parse_bs(t: Table, corp_code: str, year: int, rcept_no: str, period: int = 0) -> pd.DataFrame:
+    return parse_statement(t, "BS", corp_code, year, rcept_no, period)
+
+
+def _per_share(cell: str, label: str):
+    """주당이익 행: 원 단위(행 머리에 단위가 있으면 그 단위), '4,396원'·'2,131.0'·'(2,315.0)' 형식."""
+    m = _UNIT_IN_LABEL.search(label)
+    mult = parse_unit(m.group(0)) if m else 1
+    s = re.sub(r"\s+", "", cell).removesuffix("원")
+    frac = re.fullmatch(r"(.*?)\.(\d+)(\)?)", s)
+    if frac:
+        if int(frac.group(2)):
+            raise StatementError(f"주당 금액에 소수가 있다: {cell!r}")
+        s = frac.group(1) + frac.group(3)
+    return to_won(s, mult)
+
+
+def check_is(df: pd.DataFrame) -> None:
+    """핵심 계정: 당기순이익 행에 값이 있어야 한다 (D-014)."""
+    names = df["account_nm"].map(norm)
+    net = df.loc[names.str.match(NET_INCOME), "amount"].dropna()
+    if net.empty:
+        raise StatementError(f"당기순이익 값이 없다: {sorted(set(names))[:20]}")
 
 
 def check_bs(df: pd.DataFrame, unit: int) -> None:
@@ -123,3 +181,9 @@ def check_bs(df: pd.DataFrame, unit: int) -> None:
 def read_bs(data: bytes, corp_code: str, year: int, rcept_no: str) -> pd.DataFrame:
     """원문 zip → 연결 재무상태표 D-011 행 (source=document)."""
     return parse_bs(find_bs(body_document(data, rcept_no)), corp_code, year, rcept_no)
+
+
+def read_statement(data: bytes, kind: str, corp_code: str, year: int, rcept_no: str) -> pd.DataFrame:
+    """원문 zip → 연결 BS 또는 IS(CIS) D-011 행 (source=document)."""
+    t = find_statement(body_document(data, rcept_no), kind)
+    return parse_statement(t, kind, corp_code, year, rcept_no)

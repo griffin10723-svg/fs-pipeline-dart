@@ -33,6 +33,7 @@ SPLIT = [
     ("1. 현금및현금성자산", "현금및현금성자산"),
     ("XII. 이연법인세자산", "이연법인세자산"),  # KB금융 2022: Ⅻ 대신 라틴 문자
     ("Ⅻ. 기타자산", "기타자산"),
+    ("XⅢ. 당기순이익", "당기순이익"),  # KB금융 2020·2021: 라틴 X + 로마 숫자 Ⅲ
     ("가. 매출채권", "매출채권"),
     ("(1) 기타", "기타"),
     ("현금및현금성자산 (주4,28)", "현금및현금성자산"),
@@ -108,3 +109,33 @@ def test_fetch_document_skips_version_without_file(monkeypatch):
     monkeypatch.setattr(d, "report_versions", lambda c, y, f=False: ["R2", "R1"])
     monkeypatch.setattr(d, "_download", {"R2": None, "R1": body}.__getitem__)
     assert d.fetch_document("00688996", 2025) == ("R1", body)
+
+
+IS_ROWS = [
+    ["과 목", "제 8(당) 기", "제 7(전) 기"],
+    ["Ⅰ. 영업이익", "100", "90"],
+    ["XⅢ. 당기순이익", "70", "60"],
+    ["XⅣ. 총포괄이익", "75", "61"],
+    ["기본주당이익 (단위 : 원)", "4,396원", "(2,315.0)"],
+]
+
+
+def test_parse_income_statement_cis_and_per_share():
+    df = st.parse_statement(_t(IS_ROWS), "IS", "C", 2015, "R1")
+    assert set(df["sj_div"]) == {"CIS"}  # 총포괄 행이 있으면 단일 포괄손익계산서
+    assert df["amount"].tolist() == [100 * 10**6, 70 * 10**6, 75 * 10**6, 4396]
+    prior = st.parse_statement(_t(IS_ROWS), "IS", "C", 2014, "R1", period=1)
+    assert prior["amount"].tolist()[-1] == -2315
+
+
+def test_per_share_fraction_fails():
+    rows = [r[:] for r in IS_ROWS]
+    rows[4][1] = "4,396.5"
+    with pytest.raises(st.StatementError, match="소수"):
+        st.parse_statement(_t(rows), "IS", "C", 2015, "R1")
+
+
+def test_income_statement_without_net_income_fails():
+    rows = [r for r in IS_ROWS if "당기순이익" not in r[0]] + [["계속영업당기순이익", "1", "1"]]
+    with pytest.raises(st.StatementError, match="당기순이익"):
+        st.parse_statement(_t(rows), "IS", "C", 2015, "R1")

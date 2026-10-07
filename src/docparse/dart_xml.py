@@ -111,6 +111,27 @@ class _Reader(HTMLParser):
             self._para.append(data)
 
 
+_NUMBER = re.compile(r"^\(?[△▲\-]?[\d,]+(\.\d+)?\)?원?$")
+
+
+def _is_data_row(row: list) -> bool:
+    return any(_NUMBER.match(c.text.replace(" ", "")) for c in row[1:])
+
+
+def _table_unit(t: Table) -> re.Match | None:
+    """표 단위 표기. 숫자가 있는 행의 첫 칸(행 머리)에 붙은 단위는 그 행 전용이라 뺀다.
+
+    삼성전자 2024 손익 표 안의 단위 표기는 '기본주당이익 (단위 : 원)' 행 머리뿐이고 표 단위(백만원)는 표 앞에 있다.
+    """
+    for row in t.rows:
+        for i, c in enumerate(row):
+            if i == 0 and _is_data_row(row):
+                continue
+            if m := _UNIT.search(c.text):
+                return m
+    return None
+
+
 def _text(x: Paragraph | Table) -> str:
     if isinstance(x, Paragraph):
         return x.text
@@ -125,9 +146,9 @@ def _attach_units(order: list[Paragraph | Table]) -> None:
     prev: Paragraph | Table | None = None
     for x in order:
         if isinstance(x, Table):
-            m = _UNIT.search(_text(x))
+            m = _table_unit(x)
             if m is None and prev is not None and prev.section == x.section:
-                m = _UNIT.search(_text(prev))
+                m = _UNIT.search(_text(prev)) if isinstance(prev, Paragraph) else _table_unit(prev)
             x.unit_text = m.group(0) if m else None
         prev = x
 

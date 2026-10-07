@@ -76,3 +76,11 @@ def test_zip_with_main_and_audit_report():
     docs = read_zip(buf.getvalue(), "20231005000471")
     assert sorted(docs) == ["20231005000471.xml", "20231005000471_00761.xml"]
     assert docs["20231005000471.xml"].source == "20231005000471/20231005000471.xml"
+
+
+def test_unit_in_data_row_label_is_not_table_unit():
+    # 삼성전자 2024 손익 표: 표 안 단위는 주당이익 행 머리뿐, 표 단위(백만원)는 바로 앞 문단
+    doc = read_xml("""<SECTION-1><TITLE>2-2. 연결 손익계산서</TITLE><P>(단위 : 백만원)</P>
+<TABLE><TR><TD></TD><TD>제 56 기</TD></TR><TR><TD>매출액</TD><TD>300,870,903</TD></TR>
+<TR><TD>기본주당이익 (단위 : 원)</TD><TD>4,950</TD></TR></TABLE></SECTION-1>""".encode(), "t")
+    assert parse_unit(doc.tables[0].unit_text) == 10**6
