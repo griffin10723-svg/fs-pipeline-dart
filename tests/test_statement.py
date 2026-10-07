@@ -165,3 +165,23 @@ def test_oversized_xml_member_rejected(monkeypatch):
     monkeypatch.setattr(dart_xml, "MAX_XML", 10)
     with pytest.raises(ValueError, match="상한"):
         d.body_xml(_zip([("R1.xml", "11011")]))
+
+
+def test_cash_flow_statement_is_not_income_candidate():
+    # 한전 2022: 같은 섹션의 현금흐름표도 당기순이익·영업 행을 가진다
+    income = _t([["과 목", "제 62 기"], ["영업이익(손실)", "(32,655,153)"], ["당기순이익(손실)", "(24,429,108)"]], index=0)
+    cash = _t([["과 목", "제 62 기"], ["영업활동현금흐름", "(23,477,500)"], ["당기순이익(손실)", "(24,429,108)"],
+               ["영업이익 조정", "1"]], index=1)
+    assert st.find_statement(Document("x", tables=[income, cash]), "IS") is income
+
+
+def test_per_share_won_per_share_suffix():
+    rows = [r[:] for r in IS_ROWS]
+    rows[4][1] = "(2,315)원/주"
+    assert st.parse_statement(_t(rows), "IS", "C", 2015, "R1")["amount"].iloc[-1] == -2315
+
+
+def test_cash_flow_hedge_row_keeps_income_candidate():
+    # 회귀: 포괄손익의 '현금흐름위험회피' 행 때문에 손익 표가 빠지던 것 (KB·한전)
+    cis = _t([["과 목", "제 62 기"], ["영업이익", "10"], ["당기순이익", "7"], ["현금흐름위험회피", "1"]])
+    assert st.find_statement(Document("x", tables=[cis]), "IS") is cis

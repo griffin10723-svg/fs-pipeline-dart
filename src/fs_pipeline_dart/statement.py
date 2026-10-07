@@ -62,6 +62,10 @@ def _in_section(t: Table) -> bool:
 
 
 def _has_income_rows(labels: set[str]) -> bool:
+    # 현금흐름표도 당기순이익·영업 행을 가진다(한전 2022, 재무제표가 한 섹션에 모인 형식)
+    # '현금흐름'으로 거르면 포괄손익의 '현금흐름위험회피' 행까지 걸린다. 현금흐름표만의 '영업활동'으로 가른다
+    if any("영업활동" in x for x in labels):
+        return False
     op = any(re.search(r"영업(이익|손익|손실)", x) for x in labels)
     net = any(re.search(r"당기순(이익|손익|손실)", x) for x in labels)
     return op and net
@@ -138,7 +142,7 @@ def _per_share(cell: str, label: str):
     """주당이익 행: 원 단위(행 머리에 단위가 있으면 그 단위), '4,396원'·'2,131.0'·'(2,315.0)' 형식."""
     m = _UNIT_IN_LABEL.search(label)
     mult = parse_unit(m.group(0)) if m else 1
-    s = re.sub(r"\s+", "", cell).removesuffix("원")
+    s = re.sub(r"\s+", "", cell).removesuffix("원/주").removesuffix("원")  # 카카오 2023 원공시 '(2,315)원/주'
     frac = re.fullmatch(r"(.*?)\.(\d+)(\)?)", s)
     if frac:
         if int(frac.group(2)):
