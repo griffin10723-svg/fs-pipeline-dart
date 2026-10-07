@@ -73,7 +73,7 @@ AI 추천: 접수일 칸과 `as_of` 인자는 Stage 2 로더 첫 판에 넣는�
 남은 것:
 1. **표준 계정의 범위.** v0 XBRL에는 표준 ID만 1,257행(공시 15개)이다. 전부 표준화할지, 비율 30종에 필요한 계정만 할지.
    - AI 추천: 비율 입력 계정만(약 30~40개). 나머지는 원래 ID로 둔다. 쓰지 않는 계정까지 사전을 만드는 것은 지금 요구에 없는 일반화다.
-2. **동의어 ID 묶음.** 같은 계정이 해마다 다른 ID로 나온다. 다음 해 전기 금액으로 찾은 옛→새 ID가 v0에서 81쌍(BS·IS). 예: 삼성 선급비용 `dart_ShortTermPrepaidExpenses` → `ifrs-full_CurrentPrepaidExpenses`, SK하이닉스 매출채권 `dart_ShortTermTradeReceivable` → `ifrs-full_CurrentTradeReceivables`. KB 영업이익은 2023 `dart_OperatingIncomeLoss`, 2024~ `ifrs-full_ProfitLossFromOperatingActivities`인데 금액이 달라 이 방법으로는 묶이지 않았다(이름 사전으로 붙음).
+2. **동의어 ID 묶음.** 같은 계정이 해마다 다른 ID로 나온다. 다음 해 전기 금액으로 찾은 옛→새 ID가 v0에서 81쌍(BS·IS). 예: 삼성 선급비용 `dart_ShortTermPrepaidExpenses` → `ifrs-full_CurrentPrepaidExpenses`, SK하이닉스 매출채권 `dart_ShortTermTradeReceivable` → `ifrs-full_CurrentTradeReceivables`. KB 영업이익은 2023 `dart_OperatingIncomeLoss`, 2024~ `ifrs-full_ProfitLossFromOperatingActivities`인데 2024 보고서가 2023을 재작성해(6조 4,353억 → 6조 3,850억) 금액으로는 묶이지 않았다(이름 사전으로 붙음). 재작성이 있는 해는 동의어 묶음도 승인이 필요하다.
    - AI 추천: 표준 계정 하나에 ID 여러 개를 묶는 표(`표준계정 · 구성 ID · 근거`). 81쌍은 자동 후보, 비율 입력 계정에 걸린 것만 작업자 승인.
 3. **부호.** XBRL 자체가 해마다 다르다. KB 자기주식: 2023·2024 음수, 2025(6월 정정판) 양수.
    - AI 추천: 표준 계정마다 부호 규칙 하나(예: 자본 차감 계정은 음수). 원본 부호는 원본 parquet에 그대로 두고 표준화 층에서만 바꾼다.
