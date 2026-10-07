@@ -5,6 +5,7 @@
 - 추출 시드: (Stage 1에서 기록)
 - 경계 사례: (정정공시·결산월 변경 1건 이상, Stage 1에서 기록)
 - 판정: API 값 = 원문 값 × 단위 배수 이면 일치
+- 절차: `uv run python -m fs_pipeline_dart.sample --seed <시드> --boundary <corp_code:연도>`로 표본과 아래 표 행을 만들고, 원문 값을 채운 `outputs/sample.csv`를 `notebooks/verify.ipynb`로 판정한다. 값이 빈 칸은 판정 보류이고 통과로 세지 않는다.
 
 | # | 기업 | 연도 | 항목 | 원천 값 | 계산 값 | 일치 | 원천 위치 (접수번호) |
 |---|---|---|---|---:|---:|:-:|---|

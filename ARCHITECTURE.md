@@ -27,6 +27,7 @@ OpenDART API (단일회사 전체 재무제표, 연결)
 | `src/…/data/collect` | DART 호출, 응답 상태 검사, 원본 JSON 저장 | 기업코드, 연도 | `data/raw/*.json` |
 | `src/…/data/standardize` | 계정 식별·표준 계정 매핑 | 원본 JSON | 표준화 parquet |
 | `src/…/core/ratios` | 재무비율 산출 | 표준화 parquet | 비율 표 |
+| `src/fs_pipeline_dart/sample.py` | Stage 1 게이트 표본 추출(시드)·원문 대조 판정. DART 호출 없음 | `data/processed/fs_long.parquet`, 시드, 경계 사례 | `outputs/sample.csv`, `validation.md` 표 행 |
 | `src/…/loader` | 다른 레포용 읽기 함수. 없으면 수집해서 저장 | 기업코드, 연도 | DataFrame |
 | `src/…/core/analyze.py` | 플랫폼 진입 함수 + `SAMPLE` | `{"kind": "company", "corp_code", "fiscal_year"}` | 5칸 dict |
 
