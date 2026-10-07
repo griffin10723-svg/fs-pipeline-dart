@@ -53,10 +53,14 @@ def _labels(t: Table) -> set[str]:
 
 
 def _in_section(t: Table) -> bool:
-    """섹션 경로에 '연결재무제표' 또는 '연결 ○○표/계산서'(주석 제외)."""
+    """섹션 경로에 '연결재무제표' 또는 '연결 ○○표/계산서'(주석 제외).
+
+    2023년 이후 형식은 '2-4. 연결 현금흐름표'처럼 표마다 제목이 따로 있다.
+    """
     for x in t.section:
         s = re.sub(r"\s+", "", x)
-        if "주석" not in s and ("연결재무제표" in s or "연결재무상태표" in s or ("연결" in s and "계산서" in s)):
+        if "주석" not in s and ("연결재무제표" in s or "연결재무상태표" in s
+                               or ("연결" in s and ("계산서" in s or "현금흐름표" in s))):
             return True
     return False
 
@@ -77,11 +81,16 @@ def find_statement(doc: Document, kind: str) -> Table:
     섹션 제목만으로는 같은 섹션의 머리 표·단위 표·다른 재무제표가 함께 남아 내용 조건을 둔다.
     - BS: 자산·부채·자본총계 행을 모두 가진 표
     - IS: 영업이익(손익)·당기순이익(손익) 행을 모두 가진 표. 손익과 포괄손익을 따로 내면 손익계산서만 잡힌다
+    - CF: 영업활동 행과 기말 현금 행을 가진 표 (D-014 범위 변경 2026-10-07)
     문단 소제목은 쓰지 않는다. KB금융 2015·2018은 손익 표 앞 문단이 '가. 연결대차대조표'다.
     """
     if kind == "BS":
         def ok(t):
             return set(TOTALS) <= _labels(t)
+    elif kind == "CF":
+        def ok(t):
+            labels = _labels(t)
+            return any("영업활동" in x for x in labels) and any("기말" in x and "현금" in x for x in labels)
     elif kind == "IS":
         def ok(t):
             return _has_income_rows(_labels(t))
@@ -116,8 +125,8 @@ def parse_statement(t: Table, kind: str, corp_code: str, year: int, rcept_no: st
     unit = parse_unit(t.unit_text)
     grid = t.grid()
     cols = current_columns(grid[0], period)
-    if kind == "BS":
-        sj = "BS"
+    if kind in ("BS", "CF"):
+        sj = kind
     else:
         sj = "CIS" if any("총포괄" in x for x in _labels(t)) else "IS"
     rows = []
@@ -134,8 +143,15 @@ def parse_statement(t: Table, kind: str, corp_code: str, year: int, rcept_no: st
             "currency": "KRW", "rcept_no": rcept_no, "reprt_code": ANNUAL, "source": "document",
         })
     out = pd.DataFrame(rows, columns=COLUMNS).astype({"amount": "Int64", "ord": int, "fiscal_year": int})
-    check_bs(out, unit) if kind == "BS" else check_is(out)
+    {"BS": lambda: check_bs(out, unit), "IS": lambda: check_is(out), "CF": lambda: check_cf(out)}[kind]()
     return out
+
+
+def check_cf(df: pd.DataFrame) -> None:
+    """영업활동 현금흐름 합계 행에 값이 있어야 한다."""
+    op = df.loc[df["account_nm"].map(norm).str.match(r"^영업활동(으로인한|으로부터의|)?현금흐름"), "amount"].dropna()
+    if op.empty:
+        raise StatementError("영업활동 현금흐름 값이 없다")
 
 
 def _per_share(cell: str, label: str):

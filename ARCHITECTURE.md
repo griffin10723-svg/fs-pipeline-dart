@@ -26,7 +26,7 @@ OpenDART API (단일회사 전체 재무제표, 연결)
 OpenDART document.xml (사업보고서 원문 zip, 본문을 가진 마지막 판)
    │  docparse.dart_xml: 형식 중립 문서 모델(섹션 경로·문단·표·단위)
    ├─▶ docparse.store: 문단·표·셀 parquet (data/processed/document/{접수번호}/) — 주석 표·본문 재사용
-   │  statement: 연결 BS·IS 표 1개 특정 → D-011 행(source=document), 항등식 검사
+   │  statement: 연결 BS·IS·CF 표 1개 특정 → D-011 행(source=document), 항등식 검사
    ▼
 mapping: 같은 공시 XBRL과 금액 짝짓기 → 계정명→ID 사전(+승인 수작업)
    │  XBRL 없는 해: 다음 해 전기 금액으로 ID를 잇고 값은 그해 원래 값 (D-005 부분)
@@ -44,7 +44,7 @@ data/processed/fs_document.parquet (XBRL parquet과 같은 스키마)
 | `src/fs_pipeline_dart/sample.py` | Stage 1 게이트 표본 추출(시드)·원문 대조 판정. DART 호출 없음 | `data/processed/fs_long.parquet`, 시드, 경계 사례 | `outputs/sample.csv`, `validation.md` 표 행 |
 | `src/docparse/` | 형식 중립 문서 모델, DART 원문 리더, 단위 해석, parquet 저장. `fs_pipeline_dart`를 import하지 않는다(새 레포 승격 전제) | 원문 zip 바이트 | `Document`, 문단·표·셀 parquet |
 | `src/fs_pipeline_dart/document.py` | 사업보고서 판 목록, 본문을 가진 마지막 판 받기(D-004) | 기업코드, 연도 | `data/raw/document/{접수번호}.zip` |
-| `src/fs_pipeline_dart/statement.py` | 연결 BS·IS 표 특정과 D-011 행 변환 | `Document` | 원문 재무제표 행 |
+| `src/fs_pipeline_dart/statement.py` | 연결 BS·IS·CF 표 특정과 D-011 행 변환 (SCE 보류) | `Document` | 원문 재무제표 행 |
 | `src/fs_pipeline_dart/mapping.py` | 계정 사전·XBRL 대조·XBRL 없는 해 잇기. `manual_mapping.csv`는 작업자 승인 기록 | XBRL parquet·원본 JSON, 원문 | `fs_document.parquet`, `outputs/mapping/*.csv` |
 | `src/…/loader` | 다른 레포용 읽기 함수. 없으면 수집해서 저장 | 기업코드, 연도 | DataFrame |
 | `src/…/core/analyze.py` | 플랫폼 진입 함수 + `SAMPLE` | `{"kind": "company", "corp_code", "fiscal_year"}` | 5칸 dict |

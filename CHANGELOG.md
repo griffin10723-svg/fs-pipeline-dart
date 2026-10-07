@@ -18,7 +18,7 @@ Stage 게이트를 통과할 때마다 한 묶음으로 정리한다. 커밋 하
   - `document`: 본문을 가진 마지막 판 받기([첨부정정]·014 건너뜀)
   - `statement`: 연결 재무상태표·손익 표 특정과 파싱, 항등식·당기순이익 검사
   - `mapping`: 금액 짝짓기 계정 사전, 최근 연도 ID·부호, 다음 해 전기 금액 잇기, 승인제 수작업 매핑, 한 해 빼기 XBRL 대조
-  - KB금융 2015~2022 연결 BS·IS 689행(`fs_document.parquet`). XBRL 해 금액 753행 전액 일치, dart-fss 보조 대조
+  - KB금융 2015~2022 연결 BS·IS·CF 1,188행(`fs_document.parquet`). CF는 D-014 범위 변경으로 추가, SCE는 보류. XBRL 해 금액 753행 전액 일치, dart-fss 보조 대조
 
 ### 바뀜
 - XBRL 행에 `source=xbrl` 칸 (D-014)

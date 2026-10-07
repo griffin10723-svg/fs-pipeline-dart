@@ -46,7 +46,7 @@ log = logging.getLogger(__name__)
 
 CORE = {"자산총계": ASSETS, "부채총계": LIABILITIES, "자본총계": EQUITY}
 PROFIT_LOSS = "ifrs-full_ProfitLoss"
-SJ = {"BS": ("BS",), "IS": ("IS", "CIS")}
+SJ = {"BS": ("BS",), "IS": ("IS", "CIS"), "CF": ("CF",)}
 
 
 # 금액이 자산총계와 같아 짝짓기로는 늘 모호한 합계 행. 핵심 계정 검사에는 넣지 않는다
@@ -359,7 +359,7 @@ def compare(mapped: pd.DataFrame, xbrl: pd.DataFrame) -> pd.DataFrame:
 
 def core_missing(mapped: pd.DataFrame, kind: str = "BS") -> list[str]:
     """핵심 계정이 ID를 못 받은 공시. D-014: 비면 예외 대상."""
-    need = CORE if kind == "BS" else {"당기순이익": PROFIT_LOSS}
+    need = {"BS": CORE, "IS": {"당기순이익": PROFIT_LOSS}, "CF": {}}[kind]
     errs = []
     for (c, y), g in mapped.groupby(["corp_code", "fiscal_year"]):
         for name, aid in need.items():
@@ -451,7 +451,7 @@ def chain_back(corp_code: str, first_xbrl_year: int, years: list[int], pairs: pd
 # ---------- 실행 ----------
 
 def run(corps: list[str], xbrl_years: list[int], back: dict[str, list[int]],
-        kinds: tuple[str, ...] = ("BS", "IS"), refresh: bool = False) -> dict[str, pd.DataFrame]:
+        kinds: tuple[str, ...] = ("BS", "IS", "CF"), refresh: bool = False) -> dict[str, pd.DataFrame]:
     fs = pd.read_parquet(OUT)
     got: dict[tuple[str, int], tuple[str, Document] | None] = {}
 

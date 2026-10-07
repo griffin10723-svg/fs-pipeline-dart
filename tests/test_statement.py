@@ -185,3 +185,26 @@ def test_cash_flow_hedge_row_keeps_income_candidate():
     # 회귀: 포괄손익의 '현금흐름위험회피' 행 때문에 손익 표가 빠지던 것 (KB·한전)
     cis = _t([["과 목", "제 62 기"], ["영업이익", "10"], ["당기순이익", "7"], ["현금흐름위험회피", "1"]])
     assert st.find_statement(Document("x", tables=[cis]), "IS") is cis
+
+
+CF_ROWS = [
+    ["과 목", "제 16 기", "제 15 기"],
+    ["Ⅰ. 영업활동으로 인한 현금흐름", "4,110", "5,690"],
+    ["Ⅱ. 투자활동으로 인한 현금흐름", "(1,000)", "(900)"],
+    ["Ⅳ. 기말의 현금및현금성자산", "29,836", "32,474"],
+]
+
+
+def test_cash_flow_statement_found_under_its_own_title():
+    # 2023년 이후 형식: '2-4. 연결 현금흐름표' 섹션. '계산서'가 없어도 연결재무제표 섹션으로 본다
+    cf = _t(CF_ROWS, section=("III. 재무에 관한 사항", "2-4. 연결 현금흐름표"))
+    note = _t(CF_ROWS, section=("III. 재무에 관한 사항", "3. 연결재무제표 주석"), index=1)
+    assert st.find_statement(Document("x", tables=[cf, note]), "CF") is cf
+    df = st.parse_statement(cf, "CF", "C", 2023, "R1")
+    assert set(df["sj_div"]) == {"CF"} and df["amount"].tolist()[:2] == [4110 * 10**6, -1000 * 10**6]
+
+
+def test_cash_flow_without_operating_total_fails():
+    df = st.pd.DataFrame({"account_nm": ["Ⅱ. 투자활동으로 인한 현금흐름", "영업활동 조정"], "amount": [1, 1]})
+    with pytest.raises(st.StatementError, match="영업활동"):
+        st.check_cf(df)
