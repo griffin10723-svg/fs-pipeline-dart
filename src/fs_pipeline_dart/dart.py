@@ -125,5 +125,6 @@ def to_frame(rows: list[dict]) -> pd.DataFrame:
         "currency": df["currency"],
         "rcept_no": df["rcept_no"],
         "reprt_code": df["reprt_code"],
+        "source": "xbrl",  # 원문 파싱 행(document)과 구분한다 (D-014)
     })
     return out
