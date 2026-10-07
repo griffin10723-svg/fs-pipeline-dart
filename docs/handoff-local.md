@@ -38,7 +38,7 @@ uv run python -m fs_pipeline_dart.sample --seed 20261007 --boundary 00688996:202
 ### 3. 그 밖에
 
 - forge-quant 플러그인 확인: `claude plugin list --json` (ROADMAP Stage 1 마지막 줄).
-- `/quant-wrap`: 원문 파서 6단계의 마지막 절차.
+- `/quant-wrap`: 원문 파서 6단계의 마지막 절차. 클라우드에는 없어 로컬에서 한다. 재료는 `.planning/research/wrap-2026-10-07.md`(이 세션의 학습·실수·판단 근거·핵심 질문).
 
 ## 이번 클라우드 세션에서 끝난 것
 
