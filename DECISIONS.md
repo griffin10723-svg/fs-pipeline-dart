@@ -173,6 +173,7 @@
   - 과거 적용: 2023~2025 XBRL 일치를 통과하면 KB금융 2015~2022에 적용한다(D-013의 2019~2022에서 D-012 확장 범위로 넓힘). 상한에 걸리면 이 단계만 뺀다.
   - 위치: 범용 층은 `src/docparse/`, 재무제표 층은 `src/fs_pipeline_dart/`. 새 레포 승격이 거의 확실하므로 `docparse`는 `fs_pipeline_dart`를 import하지 않는다.
 - `source` 칸 (작업자, 2026-10-04): XBRL 쪽에도 `source="xbrl"`을 넣어 두 출처의 칸 구성을 같게 한다(`dart.to_frame` 한 줄 수정, 인계의 "dart.py 불변" 원칙의 유일한 예외). 기존 parquet은 원본 JSON에서 다시 만든다.
+- 두 번째 예외 (작업자, 2026-10-07): 인증키 노출 방지. requests 에러 메시지에 키가 든 URL이 그대로 찍힌다(실측). DART 호출을 `dart._get` 하나로 모아 에러를 키를 가린 `DartRequestError`로 바꿔 던진다. 응답 처리와 반환값은 바뀌지 않는다.
 
 ## D-015 업종별 양식과 업종 지표
 

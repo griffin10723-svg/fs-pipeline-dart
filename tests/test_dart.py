@@ -52,3 +52,32 @@ def test_to_frame_keeps_every_row_and_key_is_unique_with_detail():
 def test_to_frame_blank_amount_becomes_na_not_zero():
     df = dart.to_frame([_row(thstrm_amount="")])
     assert df["amount"].isna().all()
+
+
+SECRET = "dummy-test-value"
+
+
+def test_redact_hides_key_in_url_and_message():
+    msg = f"Max retries exceeded with url: /api/list.json?crtfc_key={SECRET}&corp_code=00126380 (Caused by ...)"
+    out = dart.redact(msg)
+    assert SECRET not in out
+    assert "crtfc_key=***&corp_code=00126380" in out
+
+
+@pytest.mark.parametrize("make_error", [
+    lambda url: dart.requests.ConnectionError(f"Max retries exceeded with url: {url}"),
+    lambda url: dart.requests.HTTPError(f"500 Server Error for url: {url}"),
+])
+def test_request_error_does_not_leak_key(monkeypatch, make_error):
+    monkeypatch.setenv("DART_API_KEY", SECRET)
+    monkeypatch.setattr(dart, "load_dotenv", lambda *a, **k: None)
+
+    def fake_get(url, params, timeout):
+        raise make_error(f"{url}?crtfc_key={params['crtfc_key']}")
+
+    monkeypatch.setattr(dart.requests, "get", fake_get)
+    with pytest.raises(dart.DartRequestError) as ei:
+        dart.fetch_fs("00126380", 2024)
+    assert SECRET not in str(ei.value)
+    # 원래 예외(키 포함)가 traceback에 연결되지 않는다
+    assert ei.value.__cause__ is None and ei.value.__suppress_context__

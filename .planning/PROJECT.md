@@ -60,7 +60,7 @@ DART 사업보고서 원문(`document.xml`, XBRL이 없는 문서)을 읽어 XBR
 
 - **Timeline**: 2026-10-16(금) 상한 (2026-10-07에 10-09에서 변경) — 넘기면 D-009 Won't를 유지하고 Stage 1 게이트로 돌아간다(D-014)
 - **Packaging**: 범용 층은 `src/docparse/`, DART 재무제표 층은 `src/fs_pipeline_dart/` — 새 레포 승격이 거의 확실하므로 `docparse`는 `fs_pipeline_dart`를 import하지 않고, 테스트를 따로 두며, 의존성을 따로 적는다. 승격 때 폴더째 옮기고 `import docparse`는 그대로
-- **Existing code**: `dart.py` · `collect.py` · `validate.py`는 건드리지 않는다 — 유일한 예외는 `dart.to_frame`에 `source` 한 줄(D-014)
+- **Existing code**: `dart.py` · `collect.py` · `validate.py`는 건드리지 않는다 — 예외는 `dart.to_frame`에 `source` 한 줄과 인증키 마스킹 `dart._get`(D-014)
 - **Fail loud**: 표를 못 찾거나, 후보가 1개로 좁혀지지 않거나, 항등식이 어긋나거나, 핵심 계정(자산·부채·자본총계, 당기순이익)이 비면 예외 — 조용한 NaN 금지
 - **Schema**: 재무제표 층 출력은 `dart.to_frame`과 같은 컬럼·타입 + `source`. 로더는 XBRL과 같게 당기만 내고 전기 열은 재작성 확인용 내부 표로만 둔다
 - **Accounting judgment**: 수작업 계정 매핑은 AI가 제안하고 작업자가 승인한다 — 계정 분류는 회계판단

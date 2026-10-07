@@ -31,6 +31,29 @@ class RceptMismatch(Exception):
     """응답의 접수번호가 공시목록의 마지막 정정본과 다르다 (D-004)."""
 
 
+class DartRequestError(Exception):
+    """DART 요청 실패. 메시지에서 인증키를 가렸다."""
+
+
+_KEY_IN_URL = re.compile(r"(crtfc_key=)[^&\s'\")]+")
+
+
+def redact(text: str) -> str:
+    """URL·에러 메시지 속 인증키를 ***로 바꾼다."""
+    return _KEY_IN_URL.sub(r"\1***", text)
+
+
+def _get(endpoint: str, params: dict) -> requests.Response:
+    """GET 후 상태 검사. requests 에러는 URL(키 포함)을 담으므로 가린 메시지로 바꿔 던진다."""
+    try:
+        r = requests.get(f"{BASE}/{endpoint}", params={"crtfc_key": _api_key()} | params, timeout=30)
+        r.raise_for_status()
+    except requests.RequestException as e:
+        # from None: 원래 예외(키 포함)를 traceback에 남기지 않는다
+        raise DartRequestError(f"{endpoint}: {type(e).__name__}: {redact(str(e))}") from None
+    return r
+
+
 def _api_key() -> str:
     # 스크립트 위치가 아니라 실행 폴더에서 .env를 찾는다
     load_dotenv(find_dotenv(usecwd=True))
@@ -39,31 +62,20 @@ def _api_key() -> str:
 
 def fetch_fs(corp_code: str, year: int) -> dict:
     """연결(CFS) 전체 재무제표. 회계판단: D-001."""
-    r = requests.get(
-        f"{BASE}/fnlttSinglAcntAll.json",
-        params={
-            "crtfc_key": _api_key(), "corp_code": corp_code, "bsns_year": year,
-            "reprt_code": ANNUAL, "fs_div": "CFS",
-        },
-        timeout=30,
-    )
-    r.raise_for_status()
+    r = _get("fnlttSinglAcntAll.json", {
+        "corp_code": corp_code, "bsns_year": year, "reprt_code": ANNUAL, "fs_div": "CFS",
+    })
     return r.json()
 
 
 def last_rcept_no(corp_code: str, year: int) -> str:
     """해당 사업연도 사업보고서의 마지막(정정 포함) 접수번호."""
     # 정정은 1년 뒤에도 나온다(KB 2024). 조회 끝을 오늘로 둔다
-    r = requests.get(
-        f"{BASE}/list.json",
-        params={
-            "crtfc_key": _api_key(), "corp_code": corp_code, "bgn_de": f"{year + 1}0101",
-            "end_de": pd.Timestamp.today().strftime("%Y%m%d"),
-            "pblntf_ty": "A", "page_count": 100,
-        },
-        timeout=30,
-    )
-    r.raise_for_status()
+    r = _get("list.json", {
+        "corp_code": corp_code, "bgn_de": f"{year + 1}0101",
+        "end_de": pd.Timestamp.today().strftime("%Y%m%d"),
+        "pblntf_ty": "A", "page_count": 100,
+    })
     body = r.json()
     if body["status"] != "000":
         raise RuntimeError(f"list.json {corp_code} {year}: {body['status']} {body['message']}")
