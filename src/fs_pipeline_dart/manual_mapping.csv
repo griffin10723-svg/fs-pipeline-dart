@@ -1,0 +1,7 @@
+corp_code,kind,name,account_id,flip,status,proposed_by,note,approved
+00688996,IS,순이자이익,ifrs-full_InterestRevenueExpense,False,approved,AI 2026-10-07,2023년부터 이름이 순이자손익. 2022 이전은 1117호 재작성으로 금액 잇기가 끊긴다. D-015 대체 항목,작업자 2026-10-07
+00688996,IS,순수수료이익,ifrs-full_FeeAndCommissionIncomeExpense,False,approved,AI 2026-10-07,2023년부터 순수수료손익,작업자 2026-10-07
+00688996,IS,지배기업주주지분총포괄이익,ifrs-full_ComprehensiveIncomeAttributableToOwnersOfParent,False,approved,AI 2026-10-07,2023년부터 지배기업주주지분총포괄손익,작업자 2026-10-07
+00688996,IS,이자비용,ifrs-full_InterestExpense,True,proposed,AI 2026-10-07,2022 이전 1개(은행 이자비용). 2023부터는 보험금융이자비용을 포함한 합계와 은행분 두 줄이라 같은 범위가 아니다. 원문 음수·XBRL 양수,
+00688996,BS,파생금융자산,ifrs-full_DerivativeFinancialAssets,False,approved,AI 2026-10-07,2023년부터 파생상품자산,작업자 2026-10-07
+00688996,BS,파생금융부채,ifrs-full_DerivativeFinancialLiabilities,False,approved,AI 2026-10-07,2023년부터 파생상품부채,작업자 2026-10-07

@@ -19,6 +19,7 @@ venv/
 data/
 *.parquet
 *.csv
+!src/fs_pipeline_dart/manual_mapping.csv
 
 # 결과물 — 용량 보고 판단. README 에 넣을 그림은 아래 negate 규칙으로 예외 처리한다.
 outputs/*
