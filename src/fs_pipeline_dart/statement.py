@@ -66,22 +66,28 @@ def find_bs(doc: Document) -> Table:
     return cands[0]
 
 
-def current_columns(header: list[str]) -> list[int]:
-    """머리 행에서 당기 열. '제 N 기' 숫자가 가장 큰 열들(금액·소계 두 칸으로 나뉘면 둘 다)."""
+def current_columns(header: list[str], period: int = 0) -> list[int]:
+    """머리 행에서 기간 열. period 0 = 당기('제 N 기' 숫자가 가장 큰 열들), 1 = 전기.
+
+    금액·소계 두 칸으로 나뉘면 둘 다 낸다.
+    """
     nums = {i: int(m.group(1)) for i, h in enumerate(header) if (m := _PERIOD.search(h))}
-    if not nums:
-        raise StatementError(f"머리 행에 기수가 없다: {header}")
-    top = max(nums.values())
-    return [i for i, n in nums.items() if n == top]
+    ranks = sorted(set(nums.values()), reverse=True)
+    if len(ranks) <= period:
+        raise StatementError(f"머리 행에 {period}번째 기간이 없다: {header}")
+    return [i for i, n in nums.items() if n == ranks[period]]
 
 
-def parse_bs(t: Table, corp_code: str, year: int, rcept_no: str) -> pd.DataFrame:
-    """재무상태표 표 → D-011 행. 당기 열만 낸다. 한 행에 당기 값이 두 칸 다 차 있으면 예외."""
+def parse_bs(t: Table, corp_code: str, year: int, rcept_no: str, period: int = 0) -> pd.DataFrame:
+    """재무상태표 표 → D-011 행. 한 행에 그 기간 값이 두 칸 다 차 있으면 예외.
+
+    로더는 당기(period=0)만 낸다. 전기(period=1)는 다음 해 보고서와 잇는 내부 대조용이다 (D-014).
+    """
     if t.unit_text is None:
         raise StatementError(f"표 {t.index}: 단위 표기가 없다")
     unit = parse_unit(t.unit_text)
     grid = t.grid()
-    cols = current_columns(grid[0])
+    cols = current_columns(grid[0], period)
     rows = []
     for ord_, r in enumerate(grid[1:], start=1):
         vals = [r[c] for c in cols if r[c].strip() not in ("",)]

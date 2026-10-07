@@ -1,7 +1,6 @@
 """계정 매핑: 금액 짝짓기가 모호하면 자동으로 짝짓지 않고, 대조는 한 해 빼기로 한다 (D-014)."""
 
 import pandas as pd
-import pytest
 
 from fs_pipeline_dart import mapping as m
 from fs_pipeline_dart.validate import NO_ID
@@ -32,36 +31,60 @@ def test_pair_statuses():
     assert p.loc["자산총계", "status"] == "dup_xbrl"
 
 
-def test_dictionary_conflict_across_years():
+def test_dictionary_takes_latest_year_id():
+    # D-005 부분: 같은 이름의 ID가 해마다 다르면 최근 연도 ID. 충돌은 기록만 한다
     pairs = pd.concat([
         m.pair(_doc(2023, [("현금", 10 * M)]), _xbrl(2023, [("id_a", 10 * M)])),
         m.pair(_doc(2024, [("현금", 11 * M)]), _xbrl(2024, [("id_b", 11 * M)])),
-        m.pair(_doc(2024, [("예치금", 3 * M)]), _xbrl(2024, [("id_c", 3 * M)])),
     ])
     d, c = m.build_dictionary(pairs)
-    assert d[["name", "account_id"]].values.tolist() == [["예치금", "id_c"]]
+    assert d[["name", "account_id", "year"]].values.tolist() == [["현금", "id_b", 2024]]
     assert c.values.tolist() == [["C", "현금", "id_a;id_b"]]
+    # 옛 ID가 새 ID로 이어지면 충돌이 아니다
+    _, c2 = m.build_dictionary(pairs, {"id_a": "id_b"})
+    assert c2.empty
 
 
-def test_apply_two_rows_same_id_fails():
-    d = pd.DataFrame([{"corp_code": "C", "name": "현금", "account_id": "id"},
-                      {"corp_code": "C", "name": "현금성자산", "account_id": "id"}])
-    with pytest.raises(ValueError, match="같은 ID"):
-        m.apply(_doc(2024, [("현금", 1 * M), ("현금성자산", 2 * M)]), d)
+def _dict(rows):
+    cols = ["corp_code", "name", "account_id", "year", "count"]
+    return pd.DataFrame([{"corp_code": "C", "name": n, "account_id": i, "year": 2024, "count": k}
+                         for n, i, k in rows], columns=cols)
 
 
-def test_holdout_detects_relabelled_account():
-    # 2023·2024는 '현금'이 id_cash, 2025에 같은 이름으로 다른 금액 → 빠진 해 대조에서 불일치로 잡힌다
-    years = {2023: 10, 2024: 11, 2025: 12}
-    docs = pd.concat([_doc(y, [("현금", v * M), ("자산총계", 100 * M + y)]) for y, v in years.items()])
-    xb = pd.concat([_xbrl(y, [("id_cash", (v if y != 2025 else 99) * M), ("ifrs-full_Assets", 100 * M + y)])
-                    for y, v in years.items()])
-    pairs = pd.concat([m.pair(docs[docs.fiscal_year == y], xb[xb.fiscal_year == y]) for y in years])
-    h = m.holdout(docs, pairs, xb).set_index("fiscal_year")
-    assert h.loc[2025, "mismatch"] == 1
-    assert h.loc[2023, "mismatch"] == 0
-    assert "부채총계" in h.loc[2023, "core_missing"]
-    assert "자산총계" not in h.loc[2023, "core_missing"]  # 핵심 3계정은 이름으로 고정
+def test_apply_two_names_same_id_assigns_neither():
+    # 카카오 2023: '파생상품자산(유동)'과 '파생상품자산'이 최근 연도 ID로 같은 ID를 받는다
+    out = m.apply(_doc(2024, [("현금", 1 * M), ("현금성자산", 2 * M)]), _dict([("현금", "id", 1), ("현금성자산", "id", 1)]))
+    assert out[["account_id", "method"]].values.tolist() == [[NO_ID, "name_dup"], [NO_ID, "name_dup"]]
+
+
+def test_count_guard_when_same_name_count_changes():
+    # 사전 해에는 '충당부채'가 둘(유동·비유동). 이번 해 하나뿐이면 순번 키를 믿지 않는다
+    d = _dict([("충당부채", "cur", 2), ("충당부채#2", "noncur", 2)])
+    out = m.apply(_doc(2022, [("충당부채", 5 * M)]), d)
+    assert out[["account_id", "method"]].values.tolist() == [[NO_ID, "count_guard"]]
+    out = m.apply(_doc(2022, [("충당부채", 5 * M), ("충당부채", 6 * M)]), d)
+    assert out["account_id"].tolist() == ["cur", "noncur"]
+
+
+def test_core_fixed_by_name():
+    out = m.apply(_doc(2022, [("자 산 총 계", 9 * M)]), _dict([]))
+    assert out[["account_id", "method"]].values.tolist() == [["ifrs-full_Assets", "core"]]
+
+
+def test_bridge_prefers_next_year_comparative_amount():
+    # 이름 사전은 '예치금'→old. 다음 해 전기 열에서 같은 금액이 new_id면 금액 짝을 쓴다
+    doc = _doc(2022, [("예치금", 7 * M), ("대출금", 30 * M), ("기타", 4 * M)])
+    ref = pd.DataFrame({"account_id": ["new_id", "loan_restated"], "amount": [7 * M, 33 * M]}).astype({"amount": "Int64"})
+    out = m.bridge(doc, ref, _dict([("예치금", "old", 1), ("대출금", "loan", 1)]))
+    # 재작성으로 금액이 다른 대출금은 이름 사전으로 붙는다
+    assert out[["account_id", "method"]].values.tolist() == [["new_id", "amount"], ["loan", "name"], [NO_ID, "none"]]
+
+
+def test_bridge_drops_name_id_taken_by_amount_pair():
+    doc = _doc(2022, [("A", 7 * M), ("B", 9 * M)])
+    ref = pd.DataFrame({"account_id": ["x"], "amount": [7 * M]}).astype({"amount": "Int64"})
+    out = m.bridge(doc, ref, _dict([("B", "x", 1)]))
+    assert out[["account_id", "method"]].values.tolist() == [["x", "amount"], [NO_ID, "name_clash"]]
 
 
 def test_same_name_twice_gets_occurrence_key():

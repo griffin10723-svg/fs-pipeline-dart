@@ -89,14 +89,22 @@ def test_fetch_document_skips_attachment_only_correction(monkeypatch):
     # D-004: [첨부정정]은 감사보고서만 담는다. 본문을 가진 마지막 판으로 내려간다 (KB금융 2015)
     zips = {"20160401000506": _zip([("/20160401000506_00760.xml", "00760"), ("/20160401000506_00761.xml", "00761")]),
             "20160330004428": _zip([("20160330004428.xml", "11011"), ("20160330004428_00761.xml", "00761")])}
-    monkeypatch.setattr(d, "report_versions", lambda c, y: ["20160401000506", "20160330004428"])
+    monkeypatch.setattr(d, "report_versions", lambda c, y, f=False: ["20160401000506", "20160330004428"])
     monkeypatch.setattr(d, "_download", zips.__getitem__)
     rcept, data = d.fetch_document("00688996", 2015)
     assert rcept == "20160330004428" and data == zips[rcept]
 
 
 def test_fetch_document_without_any_body_fails(monkeypatch):
-    monkeypatch.setattr(d, "report_versions", lambda c, y: ["R1"])
+    monkeypatch.setattr(d, "report_versions", lambda c, y, f=False: ["R1"])
     monkeypatch.setattr(d, "_download", lambda r: _zip([("R1_00760.xml", "00760")]))
     with pytest.raises(RuntimeError, match="본문을 가진 판이 없다"):
         d.fetch_document("C", 2015)
+
+
+def test_fetch_document_skips_version_without_file(monkeypatch):
+    # KB금융 2025: 마지막 정정 판은 document.xml이 014(파일 없음)
+    body = _zip([("R1.xml", "11011")])
+    monkeypatch.setattr(d, "report_versions", lambda c, y, f=False: ["R2", "R1"])
+    monkeypatch.setattr(d, "_download", {"R2": None, "R1": body}.__getitem__)
+    assert d.fetch_document("00688996", 2025) == ("R1", body)
