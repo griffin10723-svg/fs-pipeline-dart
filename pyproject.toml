@@ -29,3 +29,7 @@ ignore = ["E501"]  # 한글 주석 줄이 길다
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.uv.build-backend]
+# docparse는 새 레포 승격을 전제로 한 독립 패키지다 (D-014). fs_pipeline_dart를 import하지 않는다
+module-name = ["fs_pipeline_dart", "docparse"]
