@@ -26,15 +26,26 @@ CORE = {"자산총계": ASSETS, "부채총계": LIABILITIES, "자본총계": EQU
 REPORT_DIR = Path("outputs/mapping")
 
 
+def name_keys(doc: pd.DataFrame) -> pd.Series:
+    """사전 키: 정규화한 계정명. 한 공시에 같은 이름이 또 나오면 '#2'·'#3'을 붙인다.
+
+    재무상태표에는 유동·비유동 아래 같은 이름(예: 삼성전자 '충당부채')이 두 번 나온다. 이름만으로는 구분할 수 없어
+    표 안 등장 순서로 가른다. 원문 형식이 해마다 같은 회사 안에서만 의미가 있고, 사전도 회사별이다.
+    """
+    names = doc["account_nm"].map(norm)
+    n = names.groupby([doc["corp_code"], doc["fiscal_year"], names]).cumcount() + 1
+    return names.where(n == 1, names + "#" + n.astype(str))
+
+
 def pair(doc: pd.DataFrame, xbrl: pd.DataFrame) -> pd.DataFrame:
     """한 공시의 원문 행마다 짝 상태. status: auto · dup_doc · dup_xbrl · none · no_amount."""
     tol = display_unit(doc["amount"])
     x = xbrl[(xbrl["account_id"] != NO_ID) & xbrl["amount"].notna()]
     amounts = doc["amount"].dropna().astype("int64")
     out = []
-    for r in doc.itertuples(index=False):
+    for r, key in zip(doc.itertuples(index=False), name_keys(doc)):
         rec = {"corp_code": r.corp_code, "fiscal_year": r.fiscal_year, "ord": r.ord, "account_nm": r.account_nm,
-               "name": norm(r.account_nm), "amount": r.amount, "account_id": None, "candidates": ""}
+               "name": key, "amount": r.amount, "account_id": None, "candidates": ""}
         if pd.isna(r.amount):
             out.append(rec | {"status": "no_amount"})
             continue
@@ -69,8 +80,9 @@ def build_dictionary(pairs: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
 def apply(doc: pd.DataFrame, dictionary: pd.DataFrame) -> pd.DataFrame:
     """사전에 있는 이름만 ID를 붙이고 나머지는 NO_ID. 한 공시에서 같은 ID가 두 행에 붙으면 예외."""
     m = dictionary.set_index(["corp_code", "name"])["account_id"]
-    keys = list(zip(doc["corp_code"], doc["account_nm"].map(norm)))
-    ids = [m.get(k, NO_ID) for k in keys]
+    keys = list(zip(doc["corp_code"], name_keys(doc)))
+    # 핵심 3계정은 이름으로 고정한다. 자산총계는 '부채와자본총계'와 금액이 같아 짝짓기로는 늘 모호하다
+    ids = [CORE.get(k[1]) or m.get(k, NO_ID) for k in keys]
     out = doc.assign(account_id=ids)
     used = out[out["account_id"] != NO_ID]
     dup = used[used.duplicated(["corp_code", "fiscal_year", "account_id"], keep=False)]

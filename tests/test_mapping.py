@@ -61,3 +61,12 @@ def test_holdout_detects_relabelled_account():
     assert h.loc[2025, "mismatch"] == 1
     assert h.loc[2023, "mismatch"] == 0
     assert "부채총계" in h.loc[2023, "core_missing"]
+    assert "자산총계" not in h.loc[2023, "core_missing"]  # 핵심 3계정은 이름으로 고정
+
+
+def test_same_name_twice_gets_occurrence_key():
+    # 삼성전자 '충당부채'는 유동·비유동 두 번 나온다
+    p = m.pair(_doc(2023, [("충당부채 (주19)", 10 * M), ("충당부채 (주19)", 13 * M)]),
+               _xbrl(2023, [("ifrs-full_CurrentProvisions", 10 * M), ("ifrs-full_NoncurrentProvisions", 13 * M)]))
+    assert p[["name", "account_id"]].values.tolist() == [
+        ["충당부채", "ifrs-full_CurrentProvisions"], ["충당부채#2", "ifrs-full_NoncurrentProvisions"]]
