@@ -12,8 +12,18 @@ ITEMS = {
     "매출액": ["ifrs-full_Revenue"],
     "영업이익": ["dart_OperatingIncomeLoss", "ifrs-full_ProfitLossFromOperatingActivities"],
     "자산총계": ["ifrs-full_Assets"],
+    "순이자이익": ["ifrs-full_InterestRevenueExpense"],
 }
-SJ_BY_ITEM = {"매출액": ("IS", "CIS"), "영업이익": ("IS", "CIS"), "자산총계": ("BS",)}
+SJ_BY_ITEM = {"매출액": ("IS", "CIS"), "영업이익": ("IS", "CIS"), "자산총계": ("BS",), "순이자이익": ("IS", "CIS")}
+GATE_ITEMS = ["매출액", "영업이익", "자산총계"]
+
+# 회계판단: D-015 업종 규칙 표. 여기 있는 기업만 매출액 대신 업종 대체 항목을 대조한다.
+# 표에 없는 기업에서 계정이 비면 판정 보류(불통과)다
+FORM = {"00688996": "금융지주"}
+SUBSTITUTE = {"금융지주": {"매출액": "순이자이익"}}
+
+OPEX = "dart_TotalSellingGeneralAdministrativeExpenses"  # 영업수익 형식의 영업비용
+COST_OF_SALES = "ifrs-full_CostOfSales"
 PICK_COLS = ["corp_code", "fiscal_year", "boundary"]
 
 
@@ -47,17 +57,49 @@ def _value(g: pd.DataFrame, key: tuple, item: str) -> tuple[str | None, object]:
             raise ValueError(f"{key} {item} {aid}: 값이 {len(vals)}개 {list(vals)}")
         if len(vals) == 1:
             return aid, int(vals[0])
+    if item == "매출액":
+        return _revenue_by_identity(g, key)
     return None, pd.NA
 
 
+def _revenue_by_identity(g: pd.DataFrame, key: tuple) -> tuple[str | None, object]:
+    """`ifrs-full_Revenue`가 없을 때 손익 표 첫 줄을 매출로 본다. 첫 줄 − 영업비용 = 영업이익이 원 단위까지 맞을 때만.
+
+    회계판단: D-005 영업수익 형식(매출원가 없음) 회사가 2021~2022에 영업수익을 다른 ID로 태깅했다
+    (카카오 `ifrs-full_GrossProfit`, 크래프톤 `-표준계정코드 미사용-`). 진짜 매출총이익 − 판관비도 영업이익과
+    같으므로 산식만으로는 못 가른다. 매출원가 줄이 있는 표(매출총이익 형식)는 대상에서 뺀다.
+    """
+    found = set()
+    for sj in ("IS", "CIS"):
+        t = g[g["sj_div"] == sj]
+        if (t["account_id"] == COST_OF_SALES).any():
+            continue
+        opex = t.loc[t["account_id"] == OPEX, "amount"].dropna().unique()
+        op = t.loc[t["account_id"].isin(ITEMS["영업이익"]), "amount"].dropna().unique()
+        if len(opex) != 1 or len(op) != 1:
+            continue
+        first = t[t["ord"] == t["ord"].min()]
+        if len(first) == 1 and pd.notna(rev := first["amount"].iloc[0]) and rev - opex[0] == op[0]:
+            found.add((first["account_id"].iloc[0], int(rev)))
+    if len({v for _, v in found}) > 1:
+        raise ValueError(f"{key} 매출액 산식 후보가 둘 이상 {sorted(found)}")
+    return next(iter(found)) if found else (None, pd.NA)
+
+
+def items_for(corp_code: str) -> list[str]:
+    """게이트 3개 항목. 업종 규칙 표에 있는 기업은 대체 항목으로 바꾼다 (D-015)."""
+    sub = SUBSTITUTE.get(FORM.get(corp_code), {})
+    return [sub.get(i, i) for i in GATE_ITEMS]
+
+
 def extract(df: pd.DataFrame, picks: pd.DataFrame) -> pd.DataFrame:
-    """표본마다 3개 항목의 API 값과 접수번호. 계정이 없으면 금액을 비워 둔다(판정 보류)."""
+    """표본마다 3개 항목(D-015 대체 포함)의 API 값과 접수번호. 계정이 없으면 금액을 비워 둔다(판정 보류)."""
     sub = df.merge(picks[["corp_code", "fiscal_year"]], on=["corp_code", "fiscal_year"], how="inner")
     rows = []
     for key, g in sub.groupby(["corp_code", "fiscal_year"]):
         rcept = g["rcept_no"].unique()
         assert len(rcept) == 1  # 회계판단: D-004 validate()가 이미 보장한다
-        for item in ITEMS:
+        for item in items_for(key[0]):
             aid, amt = _value(g, key, item)
             rows.append({
                 "corp_code": key[0], "fiscal_year": key[1], "item": item,
@@ -69,7 +111,7 @@ def extract(df: pd.DataFrame, picks: pd.DataFrame) -> pd.DataFrame:
     absent = out["item"].isna()
     if absent.any():
         raise ValueError(f"parquet에 없는 표본: {out.loc[absent, ['corp_code', 'fiscal_year']].values.tolist()}")
-    assert len(out) == len(picks) * len(ITEMS)
+    assert len(out) == len(picks) * len(GATE_ITEMS)
     return out
 
 
