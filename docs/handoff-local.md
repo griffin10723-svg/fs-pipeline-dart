@@ -39,6 +39,7 @@ uv run python -m fs_pipeline_dart.sample --seed 20261007 --boundary 00688996:202
 
 - 손익 표 단위 저울(quant-wrap 1번에서 나옴): 순이익을 손익 표와 현금흐름표에서 따로 읽어 다르면 멈추는 검사. 지금은 손익 표 단위가 틀려도(백만 배) 잡는 검사가 없다.
 
+- 양방향 계정 부호(2026-10-08): KB 2015~2022 부호 뒤집은 131행 중 29행이 손익·증감 계정이라 이익/손실 방향이 틀렸을 수 있다. D-005 부호 규칙 결정 때 같이 본다(`stage2-decisions.md` D-005 3번).
 - forge-quant 플러그인 확인: `claude plugin list --json` (ROADMAP Stage 1 마지막 줄).
 - `/quant-wrap`: 원문 파서 6단계의 마지막 절차. 클라우드에는 없어 로컬에서 한다. 재료는 `.planning/research/wrap-2026-10-07.md`(이 세션의 학습·실수·판단 근거·핵심 질문).
 
