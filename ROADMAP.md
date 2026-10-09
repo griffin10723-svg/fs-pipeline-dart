@@ -28,7 +28,7 @@
 - [ ] `core/analyze.py` — `analyze()` 5칸 dict + `SAMPLE` (`tests/test_contract.py` 통과)
 - [ ] 골든 스냅샷 `tests/golden/` + 비교 테스트, 로컬 태그 `p1-stage2`
 - [ ] 명령 한 줄 end-to-end 실행
-- [ ] merge 전후 행 수 전건 로깅
+- [ ] merge 전후 행 수 전건 로깅 — Stage 1 게이트 재판정(2026-10-09)에서 Stage 2로 이관: `sample.py:34,39,97` merge에 `validate=`·행 수 로그 없음, `mapping.py` concat에 행 수 로그 없음. 표본 도구·매핑 단계라 Stage 1 산출(수집 parquet)의 행 수는 `collect.py`가 이미 단언·로깅한다
 - [ ] ID 없는 행(`-표준계정코드 미사용-`) 안전장치 (2026-10-07, 원문 파서에서 나옴)
   - [ ] 로더는 ID 없는 행을 기본으로 빼고 옵션으로만 낸다 (account_id merge 행 수 폭증 방지)
   - [ ] 기업×연도별 비율 입력 계정 커버리지 표 ("매핑 못 함"과 "원래 없음"을 가른다)
