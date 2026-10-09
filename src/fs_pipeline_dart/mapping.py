@@ -456,18 +456,31 @@ def chain_back(corp_code: str, first_xbrl_year: int, years: list[int], pairs: pd
 
 # ---------- 실행 ----------
 
+class MissingDocuments(Exception):
+    """원문을 받지 못한 공시가 있다. 빠진 채로 사전·대조를 만들지 않는다."""
+
+
 def run(corps: list[str], xbrl_years: list[int], back: dict[str, list[int]],
-        kinds: tuple[str, ...] = ("BS", "IS", "CF"), refresh: bool = False) -> dict[str, pd.DataFrame]:
+        kinds: tuple[str, ...] = ("BS", "IS", "CF"), refresh: bool = False,
+        allow_missing: bool = False) -> dict[str, pd.DataFrame]:
+    """allow_missing=False면 원문을 하나라도 못 받을 때 멈춘다(D-014: 조용히 빼지 않는다)."""
     fs = pd.read_parquet(OUT)
     got: dict[tuple[str, int], tuple[str, Document] | None] = {}
+    missing: list[str] = []
+
+    def check_missing() -> None:
+        # 빠진 공시가 있는 결과는 대조 건수·사전이 달라진다. 명시적으로 허락했을 때만 계속한다
+        if missing and not allow_missing:
+            raise MissingDocuments(f"원문 {len(missing)}건 못 받음: {'; '.join(missing)} (--allow-missing으로 건너뛸 수 있다)")
 
     def doc_of(c: str, y: int) -> tuple[str, Document] | None:
         """원문 본문을 한 번만 받아 읽고, 범용 층(문단·표·셀)을 저장한다."""
         if (c, y) not in got:
             try:
                 rcept, data = fetch_document(c, y, force=refresh)
-            except Exception as e:  # DART 시간 초과 등. 그 공시만 빼고 계속한다
+            except Exception as e:  # DART 시간 초과·점검(800) 등. 모아 두었다가 check_missing에서 판단한다
                 log.error("원문 못 받음 %s %s: %s", c, y, e)
+                missing.append(f"{c} {y}: {type(e).__name__}")
                 got[(c, y)] = None
                 return None
             body = body_document(data, rcept)
@@ -491,6 +504,9 @@ def run(corps: list[str], xbrl_years: list[int], back: dict[str, list[int]],
                 doc = parse_statement(find_statement(body, kind), kind, c, y, rcept)
                 docs.append(doc)
                 pairs.append(pair(doc, x))
+        check_missing()
+        if not docs:
+            raise MissingDocuments(f"{kind}: 대조할 원문이 하나도 없다")
         docs, pairs = pd.concat(docs, ignore_index=True), pd.concat(pairs, ignore_index=True)
         built = [build_dictionary(pairs[pairs["corp_code"] == c], rmaps[c]) for c in corps]
         h, hd = holdout(docs, pairs, xbrl, rmaps, kind)
@@ -508,6 +524,9 @@ def run(corps: list[str], xbrl_years: list[int], back: dict[str, list[int]],
                      "back_rows": pd.concat([b[0] for b in backs], ignore_index=True)}
         for name, df in part.items():
             res.setdefault(name, []).append(df.assign(kind=kind) if "kind" not in df else df)
+    check_missing()  # chain_back이 받은 과거 해 원문까지 확인한다
+    if missing:
+        log.warning("원문 %d건을 빼고 계속했다(--allow-missing): %s", len(missing), "; ".join(missing))
     return {name: pd.concat(dfs, ignore_index=True) for name, dfs in res.items()}
 
 
@@ -527,6 +546,7 @@ def main() -> None:
     ap.add_argument("--years", default="2023-2025", help="XBRL 대조 연도")
     ap.add_argument("--back", default="00688996:2015-2022", help="XBRL 없는 해 corp:연도범위, 비우면 생략")
     ap.add_argument("--refresh", action="store_true", help="공시목록을 다시 받아 새 정정판을 반영한다")
+    ap.add_argument("--allow-missing", action="store_true", help="원문을 못 받은 공시를 빼고 계속한다(경고만)")
     a = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     lo, _, hi = a.years.partition("-")
@@ -535,7 +555,8 @@ def main() -> None:
         c, _, rng = a.back.partition(":")
         b0, _, b1 = rng.partition("-")
         back[c] = list(range(int(b0), int(b1 or b0) + 1))
-    out = run(list(dart.CORPS)[: a.corps], list(range(int(lo), int(hi or lo) + 1)), back, refresh=a.refresh)
+    out = run(list(dart.CORPS)[: a.corps], list(range(int(lo), int(hi or lo) + 1)), back, refresh=a.refresh,
+              allow_missing=a.allow_missing)
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     for name, df in out.items():
         df.to_csv(REPORT_DIR / f"{name}.csv", index=False, encoding="utf-8-sig")
