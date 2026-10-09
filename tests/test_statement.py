@@ -3,6 +3,7 @@
 import io
 import zipfile
 
+import pandas as pd
 import pytest
 
 from docparse.model import Cell, Document, Table
@@ -223,3 +224,19 @@ def test_download_reports_dart_maintenance(tmp_path, monkeypatch):
     with pytest.raises(d.DartUnavailable, match="status 800 시스템 점검"):
         d._download("20240312000736")
     assert not list(tmp_path.iterdir())  # 오류 응답을 원본으로 저장하지 않는다
+
+
+def _rows(*rows):
+    return pd.DataFrame({"account_nm": [r[0] for r in rows], "amount": pd.array([r[1] for r in rows], dtype="Int64")})
+
+
+def test_net_income_scale_catches_unit_misread():
+    cf = _rows(("영업활동현금흐름", 9_000_000_000), ("당기순이익", 5_000_000_000))
+    assert st.check_net_income(_rows(("당기순이익", 5_000_000_000), ("기본주당이익", 4_396)), cf)
+    with pytest.raises(st.StatementError, match="단위"):  # 손익 표를 원으로 읽어 백만 배 작다
+        st.check_net_income(_rows(("당기순이익", 5_000), ("기본주당이익", 4_396)), cf)
+
+
+def test_net_income_scale_compares_size_and_skips_when_cf_has_no_line():
+    assert st.check_net_income(_rows(("당기순손실", 3_000_000)), _rows(("당기순이익(손실)", -3_000_000)))
+    assert st.check_net_income(_rows(("당기순이익", 1_000_000)), _rows(("영업에서창출된현금", 2_000_000))) is False

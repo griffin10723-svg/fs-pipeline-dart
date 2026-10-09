@@ -29,6 +29,7 @@ from fs_pipeline_dart.document import fetch_document
 from fs_pipeline_dart.statement import (
     NET_INCOME,
     body_document,
+    check_net_income,
     find_statement,
     norm,
     parse_statement,
@@ -467,6 +468,7 @@ def run(corps: list[str], xbrl_years: list[int], back: dict[str, list[int]],
     fs = pd.read_parquet(OUT)
     got: dict[tuple[str, int], tuple[str, Document] | None] = {}
     missing: list[str] = []
+    unweighed: list[str] = []  # 현금흐름표에 당기순이익 행이 없어 단위 저울을 못 잰 공시
 
     def check_missing() -> None:
         # 빠진 공시가 있는 결과는 대조 건수·사전이 달라진다. 명시적으로 허락했을 때만 계속한다
@@ -484,6 +486,11 @@ def run(corps: list[str], xbrl_years: list[int], back: dict[str, list[int]],
                 got[(c, y)] = None
                 return None
             body = body_document(data, rcept)
+            if {"IS", "CF"} <= set(kinds):
+                # 손익 표 단위를 백만 배 잘못 읽어도 다른 검사는 못 잡는다. 현금흐름표 순이익과 맞춰 본다
+                is_df, cf_df = (parse_statement(find_statement(body, k), k, c, y, rcept) for k in ("IS", "CF"))
+                if not check_net_income(is_df, cf_df):
+                    unweighed.append(f"{c} {y}")
             store.save(body, DOC_LAYER / rcept)
             got[(c, y)] = (rcept, body)
         return got[(c, y)]
@@ -525,6 +532,8 @@ def run(corps: list[str], xbrl_years: list[int], back: dict[str, list[int]],
         for name, df in part.items():
             res.setdefault(name, []).append(df.assign(kind=kind) if "kind" not in df else df)
     check_missing()  # chain_back이 받은 과거 해 원문까지 확인한다
+    if unweighed:
+        log.warning("손익 단위 저울 못 잼 %d건(현금흐름표에 당기순이익 행 없음): %s", len(unweighed), "; ".join(unweighed))
     if missing:
         log.warning("원문 %d건을 빼고 계속했다(--allow-missing): %s", len(missing), "; ".join(missing))
     return {name: pd.concat(dfs, ignore_index=True) for name, dfs in res.items()}

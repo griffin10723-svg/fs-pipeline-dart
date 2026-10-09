@@ -12,7 +12,7 @@ from docparse.model import Document, Table
 from docparse.units import parse_unit, to_won
 from fs_pipeline_dart.dart import ANNUAL
 from fs_pipeline_dart.document import body_xml
-from fs_pipeline_dart.validate import NO_ID
+from fs_pipeline_dart.validate import NO_ID, display_unit
 
 TOTALS = ("자산총계", "부채총계", "자본총계")
 # 당기순이익·당기순손실·당기순손익·연결당기순이익(손실). '계속영업당기순이익'·'지배기업…귀속'은 아니다
@@ -173,6 +173,29 @@ def check_is(df: pd.DataFrame) -> None:
     net = df.loc[names.str.match(NET_INCOME), "amount"].dropna()
     if net.empty:
         raise StatementError(f"당기순이익 값이 없다: {sorted(set(names))[:20]}")
+
+
+def _net_income(df: pd.DataFrame):
+    v = df.loc[df["account_nm"].map(norm).str.match(NET_INCOME), "amount"].dropna()
+    return None if v.empty else int(v.iloc[0])
+
+
+def check_net_income(is_df: pd.DataFrame, cf_df: pd.DataFrame) -> bool:
+    """손익 표 단위 저울: 손익계산서와 현금흐름표의 당기순이익이 같아야 한다.
+
+    두 표는 단위를 따로 읽으므로, 한쪽 단위를 잘못 읽으면(백만 배) 여기서 어긋난다.
+    부호는 표시 방식(당기순손실을 양수로 적는 등)이 표마다 달라 크기만 비교한다.
+    현금흐름표에 당기순이익 행이 없으면(직접법 등) False — 호출하는 쪽이 '못 잼'으로 남긴다.
+    """
+    a, b = _net_income(is_df), _net_income(cf_df)
+    if b is None:
+        return False
+    if a is None:
+        raise StatementError("손익 표에 당기순이익 값이 없다")
+    tol = max(display_unit(is_df["amount"].dropna()), display_unit(cf_df["amount"].dropna()))
+    if abs(abs(a) - abs(b)) > tol:
+        raise StatementError(f"당기순이익 손익 {a:,}원 != 현금흐름 {b:,}원 (허용 ±{tol:,}) — 단위를 잘못 읽었을 수 있다")
+    return True
 
 
 def check_bs(df: pd.DataFrame, unit: int) -> None:
