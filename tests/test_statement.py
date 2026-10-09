@@ -208,3 +208,18 @@ def test_cash_flow_without_operating_total_fails():
     df = st.pd.DataFrame({"account_nm": ["Ⅱ. 투자활동으로 인한 현금흐름", "영업활동 조정"], "amount": [1, 1]})
     with pytest.raises(st.StatementError, match="영업활동"):
         st.check_cf(df)
+
+
+class _Resp:
+    def __init__(self, content):
+        self.content = content
+
+
+def test_download_reports_dart_maintenance(tmp_path, monkeypatch):
+    monkeypatch.setattr(d, "RAW_DOC", tmp_path)
+    body = ('<?xml version="1.0" encoding="UTF-8"?><result><status>800</status>'
+            '<message>시스템 점검으로 인한  서비스가 중지 중입니다.</message></result>').encode()
+    monkeypatch.setattr(d.dart, "_get", lambda *a, **k: _Resp(body))
+    with pytest.raises(d.DartUnavailable, match="status 800 시스템 점검"):
+        d._download("20240312000736")
+    assert not list(tmp_path.iterdir())  # 오류 응답을 원본으로 저장하지 않는다
