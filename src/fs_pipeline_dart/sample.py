@@ -7,6 +7,7 @@ from pathlib import Path
 import pandas as pd
 
 from fs_pipeline_dart.collect import OUT
+from fs_pipeline_dart.rowlog import rows_logged
 
 log = logging.getLogger(__name__)
 
@@ -30,6 +31,7 @@ COST_OF_SALES = "ifrs-full_CostOfSales"
 PICK_COLS = ["corp_code", "fiscal_year", "boundary"]
 
 
+@rows_logged
 def draw(pool: pd.DataFrame, n: int, seed: int, boundary: list[tuple[str, int]] = ()) -> pd.DataFrame:
     """풀(corp_code·fiscal_year)에서 무작위 n건, 경계 사례는 그 밖에 따로 붙인다."""
     pool = pool[["corp_code", "fiscal_year"]].drop_duplicates()
@@ -98,6 +100,7 @@ def items_for(corp_code: str) -> list[str]:
     return [sub.get(i, i) for i in GATE_ITEMS]
 
 
+@rows_logged
 def extract(df: pd.DataFrame, picks: pd.DataFrame) -> pd.DataFrame:
     """표본마다 3개 항목(D-015 대체 포함)의 API 값과 접수번호. 계정이 없으면 금액을 비워 둔다(판정 보류)."""
     # 한 기업×연도에 행은 여럿, 표본 표는 기업×연도당 1행이다(many_to_one)
@@ -127,6 +130,7 @@ def extract(df: pd.DataFrame, picks: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+@rows_logged
 def judge(filled: pd.DataFrame) -> pd.DataFrame:
     """원문 값(source_amount, 표시 단위)과 단위 배수(unit)를 채운 표에 판정을 붙인다.
 

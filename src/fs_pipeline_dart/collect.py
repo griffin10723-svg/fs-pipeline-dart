@@ -9,6 +9,7 @@ from pathlib import Path
 import pandas as pd
 
 from fs_pipeline_dart import dart
+from fs_pipeline_dart.rowlog import rows_logged
 from fs_pipeline_dart.validate import validate
 
 log = logging.getLogger(__name__)
@@ -47,6 +48,7 @@ def collect_one(corp_code: str, year: int, force: bool = False) -> Path | None:
     return path
 
 
+@rows_logged
 def build_parquet(paths: list[Path]) -> pd.DataFrame:
     """원본 JSON들을 합쳐 parquet으로 저장한다. 합치기 전후 행 수를 기록한다."""
     frames = []

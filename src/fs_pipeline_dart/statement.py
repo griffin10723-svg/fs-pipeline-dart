@@ -12,6 +12,7 @@ from docparse.model import Document, Table
 from docparse.units import parse_unit, to_won
 from fs_pipeline_dart.dart import ANNUAL
 from fs_pipeline_dart.document import body_xml
+from fs_pipeline_dart.rowlog import rows_logged
 from fs_pipeline_dart.validate import NO_ID, display_unit
 
 TOTALS = ("자산총계", "부채총계", "자본총계")
@@ -114,6 +115,7 @@ def current_columns(header: list[str], period: int = 0) -> list[int]:
     return [i for i, n in nums.items() if n == ranks[period]]
 
 
+@rows_logged
 def parse_statement(t: Table, kind: str, corp_code: str, year: int, rcept_no: str, period: int = 0) -> pd.DataFrame:
     """재무제표 표 → D-011 행. 한 행에 그 기간 값이 두 칸 다 차 있으면 예외.
 

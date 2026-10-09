@@ -26,6 +26,7 @@ from docparse.model import Document
 from fs_pipeline_dart import dart
 from fs_pipeline_dart.collect import OUT, RAW
 from fs_pipeline_dart.document import fetch_document
+from fs_pipeline_dart.rowlog import rows_logged
 from fs_pipeline_dart.statement import (
     NET_INCOME,
     body_document,
@@ -85,6 +86,7 @@ DICT_VERSION = "bs-0.1"  # 회계판단: D-005 assumptions에 남길 계정 사�
 
 # ---------- XBRL 쪽 ----------
 
+@rows_logged
 def xbrl_rows(corp_code: str, year: int, kind: str = "BS") -> pd.DataFrame | None:
     """원본 JSON의 표준 ID 행: account_id · thstrm · frmtrm (원). 받은 적 없으면 None.
 
@@ -174,6 +176,7 @@ def _hits(x: pd.DataFrame, a: int, tol: int) -> tuple[list[str], bool]:
     return sorted(set(x.loc[(amt + a).abs() <= tol, "account_id"])), True
 
 
+@rows_logged
 def pair(doc: pd.DataFrame, xbrl: pd.DataFrame) -> pd.DataFrame:
     """한 공시의 원문 행마다 짝 상태. status: auto · dup_doc · dup_xbrl · none · no_amount. flip = 부호 반대."""
     tol = _tol(doc)
@@ -202,6 +205,7 @@ def pair(doc: pd.DataFrame, xbrl: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(out)
 
 
+@rows_logged
 def build_dictionary(pairs: pd.DataFrame, rmap: dict[str, str] | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
     """자동 짝에서 회사별 사전과 충돌 기록. 같은 이름의 ID가 해마다 다르면 최근 연도 ID를 쓴다 (D-005 부분).
 
@@ -227,6 +231,7 @@ def build_dictionary(pairs: pd.DataFrame, rmap: dict[str, str] | None = None) ->
     return d[cols].reset_index(drop=True), c
 
 
+@rows_logged
 def manual_dictionary(path: Path = MANUAL) -> pd.DataFrame:
     """작업자가 결정한 수작업 매핑(status = approved·rejected). 제안(proposed)은 쓰지 않는다.
 
@@ -239,6 +244,7 @@ def manual_dictionary(path: Path = MANUAL) -> pd.DataFrame:
     return m[m["status"].isin(["approved", "rejected"])][cols].astype({"flip": bool})
 
 
+@rows_logged
 def _assign(doc: pd.DataFrame, dictionary: pd.DataFrame, kind: str,
             manual: pd.DataFrame | None = None) -> pd.DataFrame:
     """ID·부호를 정한다(금액은 아직 원문 부호). method: core · manual · rejected · name · count_guard ·
@@ -293,6 +299,7 @@ def _signed(out: pd.DataFrame) -> pd.DataFrame:
     return out.assign(amount=amt)
 
 
+@rows_logged
 def apply(doc: pd.DataFrame, dictionary: pd.DataFrame, kind: str = "BS") -> pd.DataFrame:
     """이름 사전으로 ID를 붙이고 금액을 XBRL 부호로 바꾼다.
 
@@ -310,6 +317,7 @@ def _check_dup_ids(df: pd.DataFrame) -> None:
         raise ValueError(f"한 공시에서 같은 ID가 여러 행: {dup[['fiscal_year', 'account_nm', 'account_id']].values.tolist()}")
 
 
+@rows_logged
 def bridge(doc: pd.DataFrame, ref: pd.DataFrame, dictionary: pd.DataFrame, kind: str = "BS") -> pd.DataFrame:
     """다음 해 보고서의 전기 값(ref: account_id · amount · flip)과 금액으로 먼저 잇고, 나머지는 이름 사전.
 
@@ -346,6 +354,7 @@ def bridge(doc: pd.DataFrame, ref: pd.DataFrame, dictionary: pd.DataFrame, kind:
 
 # ---------- 대조 ----------
 
+@rows_logged
 def compare(mapped: pd.DataFrame, xbrl: pd.DataFrame) -> pd.DataFrame:
     """ID가 붙은 원문 행을 같은 공시 XBRL과 비교. result: match · mismatch · missing_in_xbrl."""
     tol = _tol(mapped)
@@ -388,6 +397,7 @@ def _summary(c, y, doc, mapped, cmp=None, kind="BS") -> dict:
     return out
 
 
+@rows_logged
 def holdout(docs: pd.DataFrame, pairs: pd.DataFrame, xbrl: pd.DataFrame,
             rmaps: dict[str, dict[str, str]], kind: str = "BS") -> tuple[pd.DataFrame, pd.DataFrame]:
     """XBRL 있는 해를 하나씩 빼고, XBRL 없는 해와 같은 방법(다음 해 전기 열 + 나머지 해 사전)으로 ID를 붙여 대조한다."""
@@ -412,6 +422,7 @@ def holdout(docs: pd.DataFrame, pairs: pd.DataFrame, xbrl: pd.DataFrame,
 
 # ---------- XBRL 없는 해 ----------
 
+@rows_logged
 def chain_back(corp_code: str, first_xbrl_year: int, years: list[int], pairs: pd.DataFrame,
                rmap: dict[str, str], docs: dict[int, tuple[str, Document] | None],
                kind: str = "BS") -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -550,6 +561,7 @@ def run(corps: list[str], xbrl_years: list[int], back: dict[str, list[int]],
     return merged
 
 
+@rows_logged
 def save_document_rows(rows: pd.DataFrame) -> pd.DataFrame:
     """XBRL 없는 해의 원문 행을 D-011 스키마로 저장한다. 불변식 검사를 통과해야 쓴다."""
     out = rows.drop(columns=["method", "kind", "flip"], errors="ignore")
