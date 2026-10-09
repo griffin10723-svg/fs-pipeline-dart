@@ -145,3 +145,9 @@ def test_revenue_by_identity_skips_gross_profit_form():
     cos = df.iloc[[0]].assign(account_id="ifrs-full_CostOfSales", amount=50 * M, ord=5)
     t = s.extract(pd.concat([df, cos], ignore_index=True), _picks("C0", 2022)).set_index("item")
     assert pd.isna(t.loc["매출액", "api_amount"])
+
+
+def test_duplicate_boundary_fails_instead_of_doubling_rows():
+    # 같은 경계 사례를 두 번 넣으면 merge가 행을 늘리지 않고 멈춰야 한다(validate=one_to_one)
+    with pytest.raises(pd.errors.MergeError):
+        s.draw(_pool(), n=3, seed=1, boundary=[("C0", 2021), ("C0", 2021)])

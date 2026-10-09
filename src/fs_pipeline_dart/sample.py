@@ -1,11 +1,14 @@
 """Stage 1 게이트: 표본(기업×연도) 추출과 원문 대조 판정. DART 호출 없이 parquet만 읽는다."""
 
 import argparse
+import logging
 from pathlib import Path
 
 import pandas as pd
 
 from fs_pipeline_dart.collect import OUT
+
+log = logging.getLogger(__name__)
 
 # 회계판단: D-003 계정은 표준계정ID로 고른다. 금융지주 영업이익은 D-010
 ITEMS = {
@@ -31,12 +34,15 @@ def draw(pool: pd.DataFrame, n: int, seed: int, boundary: list[tuple[str, int]] 
     """풀(corp_code·fiscal_year)에서 무작위 n건, 경계 사례는 그 밖에 따로 붙인다."""
     pool = pool[["corp_code", "fiscal_year"]].drop_duplicates()
     b = pd.DataFrame(list(boundary), columns=["corp_code", "fiscal_year"]).astype(pool.dtypes.to_dict())
-    missing = b.merge(pool, how="left", indicator=True).query("_merge == 'left_only'")
+    # 같은 경계 사례를 두 번 넣으면 여기서 멈춘다(one_to_one)
+    missing = b.merge(pool, how="left", indicator=True, validate="one_to_one").query("_merge == 'left_only'")
     if len(missing):
         raise ValueError(f"경계 사례가 풀에 없다: {missing[['corp_code', 'fiscal_year']].values.tolist()}")
 
     # 경계 사례는 무작위 n건과 겹치지 않게 풀에서 뺀 뒤 뽑는다
-    rest = pool.merge(b, how="left", indicator=True).query("_merge == 'left_only'").drop(columns="_merge")
+    rest = pool.merge(b, how="left", indicator=True, validate="one_to_one").query("_merge == 'left_only'").drop(
+        columns="_merge")
+    log.info("표본 풀 %d건 - 경계 사례 %d건 = 무작위 추출 대상 %d건", len(pool), len(b), len(rest))
     if n > len(rest):
         raise ValueError(f"풀 {len(rest)}건(경계 사례 제외)에서 {n}건을 뽑을 수 없다")
     # 풀 순서가 parquet 행 순서에 따라 바뀌어도 같은 시드면 같은 표본이 나오게 정렬한다
@@ -94,7 +100,10 @@ def items_for(corp_code: str) -> list[str]:
 
 def extract(df: pd.DataFrame, picks: pd.DataFrame) -> pd.DataFrame:
     """표본마다 3개 항목(D-015 대체 포함)의 API 값과 접수번호. 계정이 없으면 금액을 비워 둔다(판정 보류)."""
-    sub = df.merge(picks[["corp_code", "fiscal_year"]], on=["corp_code", "fiscal_year"], how="inner")
+    # 한 기업×연도에 행은 여럿, 표본 표는 기업×연도당 1행이다(many_to_one)
+    sub = df.merge(picks[["corp_code", "fiscal_year"]], on=["corp_code", "fiscal_year"], how="inner",
+                   validate="many_to_one")
+    log.info("표본 행 추출: 전체 %d행 → 표본 %d건의 %d행", len(df), len(picks), len(sub))
     rows = []
     for key, g in sub.groupby(["corp_code", "fiscal_year"]):
         rcept = g["rcept_no"].unique()

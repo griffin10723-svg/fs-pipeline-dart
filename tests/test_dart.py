@@ -81,3 +81,22 @@ def test_request_error_does_not_leak_key(monkeypatch, make_error):
     assert SECRET not in str(ei.value)
     # 원래 예외(키 포함)가 traceback에 연결되지 않는다
     assert ei.value.__cause__ is None and ei.value.__suppress_context__
+
+
+def test_fetch_fs_requests_consolidated_annual(monkeypatch):
+    # 회계판단: D-001 응답에는 연결/별도 구분 칸이 없어서 요청 인자로만 연결이 정해진다
+    sent = {}
+
+    class _Resp:
+        def json(self):
+            return {"status": "000", "list": []}
+
+    def fake_get(endpoint, params):
+        sent.update(endpoint=endpoint, **params)
+        return _Resp()
+
+    monkeypatch.setattr(dart, "_get", fake_get)
+    dart.fetch_fs("00126380", 2024)
+    assert sent["endpoint"] == "fnlttSinglAcntAll.json"
+    assert sent["fs_div"] == "CFS"
+    assert sent["reprt_code"] == dart.ANNUAL == "11011"

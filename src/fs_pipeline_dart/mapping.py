@@ -402,7 +402,9 @@ def holdout(docs: pd.DataFrame, pairs: pd.DataFrame, xbrl: pd.DataFrame,
         cmp = compare(mapped, x.assign(account_id=_tr(x["account_id"], rmap)))
         results.append(_summary(c, y, doc, mapped, cmp, kind))
         details.append(cmp)
-    return pd.DataFrame(results).fillna(0), pd.concat(details, ignore_index=True)
+    detail = pd.concat(details, ignore_index=True)
+    log.info("한 해 빼기 대조: %d건, 상세 %d행", len(results), len(detail))
+    return pd.DataFrame(results).fillna(0), detail
 
 
 # ---------- XBRL 없는 해 ----------
@@ -452,7 +454,9 @@ def chain_back(corp_code: str, first_xbrl_year: int, years: list[int], pairs: pd
             status="auto")], ignore_index=True)
         prev_mapped = mapped
         prev_prior = parse_statement(t, kind, corp_code, y - 1, rcept, period=1) if y - 1 in years else None
-    return (pd.concat(out, ignore_index=True) if out else pd.DataFrame()), pd.DataFrame(summary).fillna(0)
+    rows = pd.concat(out, ignore_index=True) if out else pd.DataFrame()
+    log.info("%s %s 거슬러 잇기: %d개 해, %d행", corp_code, kind, len(out), len(rows))
+    return rows, pd.DataFrame(summary).fillna(0)
 
 
 # ---------- 실행 ----------
@@ -536,7 +540,9 @@ def run(corps: list[str], xbrl_years: list[int], back: dict[str, list[int]],
         log.warning("손익 단위 저울 못 잼 %d건(현금흐름표에 당기순이익 행 없음): %s", len(unweighed), "; ".join(unweighed))
     if missing:
         log.warning("원문 %d건을 빼고 계속했다(--allow-missing): %s", len(missing), "; ".join(missing))
-    return {name: pd.concat(dfs, ignore_index=True) for name, dfs in res.items()}
+    merged = {name: pd.concat(dfs, ignore_index=True) for name, dfs in res.items()}
+    log.info("결과 표 행 수: %s", ", ".join(f"{k}={len(v)}" for k, v in merged.items()))
+    return merged
 
 
 def save_document_rows(rows: pd.DataFrame) -> pd.DataFrame:
