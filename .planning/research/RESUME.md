@@ -115,3 +115,9 @@
 6. `/code-review` → 핵심 질문 2~3개 → `/quant-wrap`.
 
 범위와 제약의 원본: `DECISIONS.md` D-013·D-014, `.planning/PROJECT.md`.
+
+## 로컬 확인 (2026-10-09)
+
+- 클라우드 브랜치를 main에 합쳤다(`475e16a`). 추가 수정: 원문 못 받으면 매핑 중단(`--allow-missing`으로만 건너뜀), DART 오류 응답을 status·메시지로 알림(800 = `DartUnavailable`), 손익 표 단위 저울(`check_net_income`, `d6803ce`).
+- **남은 확인**: DART가 일요일(10-11)까지 점검(status 800)이라 재현을 못 했다. 점검 뒤 `uv run python -m fs_pipeline_dart.mapping` → 클라우드 숫자(BS 불일치 18, IS 9, CF 값 다름 9, `fs_document.parquet` 1,188행)와 대조하고, 단위 저울 결과(잰 건수·못 잰 건수, 어긋나 멈춘 공시)를 본다.
+- 그다음: 원문 파서 `/quant-wrap`(재료 `wrap-2026-10-07.md`). 양방향 계정 부호 29행은 D-005 부호 규칙 결정 때.
