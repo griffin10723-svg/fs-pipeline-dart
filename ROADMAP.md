@@ -18,11 +18,11 @@
 - [ ] 무작위 표본 20건 원문 대조 전액 일치 (시드 기록, 경계 사례 1건 이상: 정정공시·결산월 변경)
 - [ ] 대조 기록 — `docs/validation.md`
 - [x] DART 불변식 `validate(df)` + `tests/test_data_invariants.py` 통과 (2026-10-03, v0 15건 gap 0) — 검사 항목은 결정 기록대로(D-001·D-003·D-004), 자산총계 = 부채총계 + 자본총계는 표시 단위 ±1 (forge 2.0, 2026-10-03)
-- [ ] `.claude/settings.json`에 forge-quant 켜짐 확인(`claude plugin list --json`)
+- [x] `.claude/settings.json`에 forge-quant 켜짐 확인(`claude plugin list --json`) (2026-10-09)
 
 ## Stage 2 핵심 구현
-- [ ] 계정과목 표준화 규칙 결정 (DECISIONS D-005)
-- [ ] ROE 등 비율 산식 세부 결정 (DECISIONS D-002)
+- [x] 계정과목 표준화 규칙 결정 (DECISIONS D-005) (2026-10-09)
+- [x] ROE 등 비율 산식 세부 결정 (DECISIONS D-002) (2026-10-09)
 - [ ] v0 (5개 기업 × 3개년) 수집 → 표준화 → 비율까지 관통
 - [ ] 다른 레포가 import할 로더 함수
 - [ ] `core/analyze.py` — `analyze()` 5칸 dict + `SAMPLE` (`tests/test_contract.py` 통과)
