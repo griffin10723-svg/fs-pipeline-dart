@@ -170,3 +170,34 @@ def test_rejected_manual_blocks_auto_dictionary_without_transition_guard(monkeyp
     assert out[["account_id", "method"]].values.tolist() == [[NO_ID, "rejected"]]
     ref = pd.DataFrame({"account_id": ["ins"], "amount": [16 * M]}).astype({"amount": "Int64"})
     assert m.bridge(_doc(2022, [("2. 보험비용", -16 * M)], sj="CIS"), ref, d, "IS")["method"].tolist() == ["rejected"]
+
+
+def _run_without_documents(tmp_path, monkeypatch):
+    fs = tmp_path / "fs.parquet"
+    pd.DataFrame({"corp_code": ["C", "C"], "fiscal_year": [2023, 2024], "sj_div": ["BS", "BS"],
+                  "rcept_no": ["1", "2"]}).to_parquet(fs)
+    monkeypatch.setattr(m, "OUT", fs)
+    monkeypatch.setattr(m, "rename_map", lambda *a, **k: {})
+
+    def down(c, y, force=False):
+        if y == 2024:
+            raise RuntimeError("status 800")
+        return "1", b""
+    monkeypatch.setattr(m, "fetch_document", down)
+    monkeypatch.setattr(m, "body_document", lambda data, rcept: None)
+    monkeypatch.setattr(m.store, "save", lambda *a: None)
+    monkeypatch.setattr(m, "find_statement", lambda body, kind: None)
+    monkeypatch.setattr(m, "parse_statement", lambda *a, **k: _doc(2023, [("자산총계", 1 * M)]))
+    monkeypatch.setattr(m, "pair", lambda doc, x: doc)
+
+
+def test_run_stops_when_a_document_is_missing(tmp_path, monkeypatch):
+    _run_without_documents(tmp_path, monkeypatch)
+    with pytest.raises(m.MissingDocuments, match="C 2024"):
+        m.run(["C"], [2023, 2024], {}, kinds=("BS",))
+
+
+def test_run_all_missing_is_clear_error_even_when_allowed(tmp_path, monkeypatch):
+    _run_without_documents(tmp_path, monkeypatch)
+    with pytest.raises(m.MissingDocuments, match="하나도 없다"):
+        m.run(["C"], [2024], {}, kinds=("BS",), allow_missing=True)

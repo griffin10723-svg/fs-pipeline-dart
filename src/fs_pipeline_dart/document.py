@@ -70,6 +70,23 @@ def has_body(data: bytes) -> bool:
     return body_xml(data) is not None
 
 
+class DartUnavailable(RuntimeError):
+    """DART 시스템 점검(status 800). 원문 문제가 아니므로 점검이 끝난 뒤 다시 돌린다."""
+
+
+_STATUS = re.compile(rb"<status>(\d+)</status>\s*<message>(.*?)</message>", re.S)
+
+
+def _status_error(rcept_no: str, data: bytes) -> RuntimeError:
+    """zip 대신 온 DART 오류 응답을 읽을 수 있는 예외로 바꾼다."""
+    m = _STATUS.search(data[:500])
+    if not m:
+        return RuntimeError(f"document.xml {rcept_no}: zip이 아니다 {data[:200]!r}")
+    status, message = m[1].decode(), m[2].decode("utf-8", "replace").strip()
+    cls = DartUnavailable if status == "800" else RuntimeError
+    return cls(f"document.xml {rcept_no}: DART status {status} {message}")
+
+
 def _download(rcept_no: str) -> bytes | None:
     """zip 바이트. DART가 '파일 없음'(014)을 주면 None (KB금융 2025 정정 `20260619000667`)."""
     if not RCEPT.fullmatch(rcept_no):  # 파일 이름에 들어가므로 형식을 확인한다
@@ -81,7 +98,7 @@ def _download(rcept_no: str) -> bytes | None:
     if b"<status>014</status>" in data[:300]:
         return None
     if not data.startswith(b"PK"):
-        raise RuntimeError(f"document.xml {rcept_no}: zip이 아니다 {data[:200]!r}")
+        raise _status_error(rcept_no, data)
     RAW_DOC.mkdir(parents=True, exist_ok=True)
     path.write_bytes(data)
     return data
