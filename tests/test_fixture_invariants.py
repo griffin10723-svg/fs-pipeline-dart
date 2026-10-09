@@ -1,7 +1,7 @@
 """커밋된 작은 표본(tests/fixtures)으로 돌리는 DART 불변식.
 
 수집 결과(data/)는 gitignore라서 새로 clone하면 실데이터 테스트가 건너뛰어진다.
-이 파일은 clone 직후에도 실제 공시 값으로 D-001·D-003·D-004·D-011 검사가 돌게 한다.
+이 파일은 clone 직후에도 실제 공시 값으로 D-003·D-004·D-011 검사가 돌게 한다.
 표본: 삼성전자 2024 · 카카오 2023(경계: 정정 3회, 원 단위) · KB금융 2024(경계: 1년 뒤 정정, 금융업).
 """
 
@@ -35,8 +35,8 @@ def test_fixture_covers_three_firm_years(df):
     assert set(zip(df["corp_code"], df["fiscal_year"], strict=True)) == set(ASSETS_FROM_FILING)
 
 
-def test_consolidated_annual_report_only(df):
-    # 회계판단: D-001 연결(CFS) 기준. 응답에 fs_div 칸이 없어 사업보고서(11011)만 들어왔는지로 확인한다
+def test_annual_report_only(df):
+    # 사업보고서(11011)만 들어왔는지 본다. 연결(D-001)은 응답 행으로 확인할 수 없어 test_dart의 요청 인자 테스트가 맡는다
     assert set(df["reprt_code"]) == {"11011"}
 
 
