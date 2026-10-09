@@ -210,6 +210,7 @@ def build_dictionary(pairs: pd.DataFrame, rmap: dict[str, str] | None = None) ->
     """
     cols = ["corp_code", "name", "account_id", "flip", "year", "count", "years"]
     auto = pairs[pairs["status"] == "auto"]
+    log.info("사전 학습 대상: 짝 %d행 중 자동 %d행", len(pairs), len(auto))
     if auto.empty:
         return pd.DataFrame(columns=cols), pd.DataFrame(columns=["corp_code", "name", "account_ids"])
     auto = auto.assign(account_id=_tr(auto["account_id"], rmap or {}))
@@ -218,7 +219,9 @@ def build_dictionary(pairs: pd.DataFrame, rmap: dict[str, str] | None = None) ->
     latest = auto.sort_values("fiscal_year").groupby(["corp_code", "name"]).tail(1)
     years = auto.groupby(["corp_code", "name"])["fiscal_year"].agg(lambda s: ",".join(map(str, sorted(set(s)))))
     d = latest.rename(columns={"fiscal_year": "year"})[["corp_code", "name", "account_id", "flip", "year", "count"]]
+    n = len(d)
     d = d.merge(years.rename("years").reset_index(), on=["corp_code", "name"], how="left", validate="one_to_one")
+    log.info("사전에 연도 목록 붙임: %d행 → %d행", n, len(d))
     ids = auto.groupby(["corp_code", "name"])["account_id"].agg(lambda s: sorted(set(s)))
     c = ids[ids.map(len) > 1].map(";".join).rename("account_ids").reset_index()
     return d[cols].reset_index(drop=True), c
@@ -440,8 +443,10 @@ def chain_back(corp_code: str, first_xbrl_year: int, years: list[int], pairs: pd
         else:
             # 다음 해 원문 전기 열(원문 부호) + 그 해 당기 행이 받은 ID·부호 규칙(같은 표·같은 행 순서)
             ref = prev_prior.merge(prev_mapped[["ord", "account_id", "flip"]], on="ord", how="left", validate="one_to_one")
+            n = len(ref)
             ref = ref.loc[ref["account_id_y"] != NO_ID, ["account_id_y", "amount", "flip"]].rename(
                 columns={"account_id_y": "account_id"})
+            log.info("%s %s %d 기준 열: 전기 %d행, ID 없는 행 빼고 %d행", corp_code, kind, y, n, len(ref))
         d, _ = build_dictionary(pool, rmap)
         mapped = bridge(doc, ref, d, kind)
         summary.append(_summary(corp_code, y, doc, mapped, kind=kind))

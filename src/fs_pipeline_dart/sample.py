@@ -116,7 +116,10 @@ def extract(df: pd.DataFrame, picks: pd.DataFrame) -> pd.DataFrame:
             })
     cols = ["corp_code", "fiscal_year", "item", "account_id", "api_amount", "rcept_no"]
     out = pd.DataFrame(rows, columns=cols).astype({"api_amount": "Int64"})
-    out = picks.merge(out, on=["corp_code", "fiscal_year"], how="left", validate="one_to_many")
+    # 항목 행(여럿)에 표본(기업×연도당 1행)을 붙인다. right 조인이라 표본 순서가 유지된다
+    out = out.merge(picks, on=["corp_code", "fiscal_year"], how="right", validate="many_to_one")[
+        PICK_COLS + cols[2:]]
+    log.info("표본 %d건 × 항목 %d개 → %d행", len(picks), len(GATE_ITEMS), len(out))
     absent = out["item"].isna()
     if absent.any():
         raise ValueError(f"parquet에 없는 표본: {out.loc[absent, ['corp_code', 'fiscal_year']].values.tolist()}")
