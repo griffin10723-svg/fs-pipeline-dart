@@ -51,3 +51,6 @@ graphify-out/
 
 # 셸 비정상 종료 덤프(Windows Git Bash)
 *.stackdump
+
+# ruflo 검색 색인 — 로컬 생성물
+.swarm/
