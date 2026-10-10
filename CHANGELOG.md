@@ -5,6 +5,11 @@ Stage 게이트를 통과할 때마다 한 묶음으로 정리한다. 커밋 하
 
 ## [Unreleased]
 
+### Stage 1 게이트 충족 (2026-10-11)
+- 원문 대조 22건(무작위 20 + 경계 2) 66개 값 불일치 0, 대조 값 `docs/validation_sample.csv`와 실행 결과를 저장한 `notebooks/verify.ipynb` 커밋
+- 게이트 판정에서 나온 보완: 커밋된 fixture(`tests/fixtures/fs_long_sample.parquet`)로 clone 직후 불변식·자산총계 원문 값 검사, 모든 merge `validate=`, 함수 단위 행 수 로그(`rowlog.rows_logged`), D-001 연결 요청 인자 테스트
+- Stage 2 판단 5개(D-002·D-004·D-005·D-006·D-007)를 작업자 근거로 재확인. D-006 단절 증감률 기본을 같은 기준 증감으로 바꿈
+
 ### 추가
 - Stage 0 스코프: 성공 기준(표본 20건 원문 100% 일치), Must·Should·Won't, 표본 단위 (2026-10-02 게이트 충족)
 - README 첫 판: 문제 정의·성공 기준
