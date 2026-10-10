@@ -56,6 +56,9 @@
   - 같은 이름이 같은 계정이 아니다(기준서 전환: KB 보험비용 1104 16.44조 vs 1117 8.76조). 같은 금액도 구조적으로 겹친다(자산총계 = 부채와자본총계). 부호도 원문·XBRL·연도마다 다르다
   - 판단 근거로 쓰는 출력은 자르지 않는다(ID를 34자로 잘라 읽고 태깅 실수로 오판한 적 있다). 합성 테스트를 통과해도 실제 문서로 다시 돌린다
   - DART 점검 중에는 `document.xml`이 HTTP 200 + `<status>800</status>`를 준다(2026-10-09~11 주말 점검). `DartUnavailable`이면 코드 문제가 아니니 점검이 끝난 뒤 다시 돌린다
+  - forge 커밋 게이트는 같은 명령 안의 heredoc(예: `python - <<'EOF'`)을 커밋 메시지로 잘못 읽어 막는다. 편집 스크립트와 `git commit`은 다른 명령으로 나누고, 커밋 메시지는 `-m`을 여러 번 쓴다. 테스트 함수 이름 변경도 "삭제"로 보아 `test:` 단독 커밋을 요구한다
+  - Workflow 스크립트가 CRLF면 승인 단계가 제어문자로 거부한다(stage-gate.js). LF로 저장한다
+  - 노트북 실행·결과 저장: `uv run --with nbconvert --with ipykernel python -m nbconvert --to notebook --execute --inplace notebooks/verify.ipynb` (의존성에 넣지 않고 임시로만 설치. `jupyter` 실행 파일은 Windows에서 못 찾는다)
   - forge 커밋 게이트는 테스트의 `skipif`를 변조로 본다. 그런 테스트는 `test:` 단독 커밋으로 올린다. 훅이 막으면 같은 명령 안의 편집도 실행되지 않으므로 편집과 커밋을 나눠 실행한다.
 - 검증: 표본 20건을 DART 웹 사업보고서 원문에서 눈으로 대조. 기록은 `docs/validation.md`와 `notebooks/verify.ipynb`.
 

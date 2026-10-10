@@ -48,3 +48,6 @@ graphify-out/
 .planning/graphs/
 .claude/proven-config.json
 .claude/.proven-config-version
+
+# 셸 비정상 종료 덤프(Windows Git Bash)
+*.stackdump
